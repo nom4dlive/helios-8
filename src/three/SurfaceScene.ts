@@ -6,6 +6,11 @@ export interface SurfaceTelemetry {
   azimuthDeg: number;
   pitchDeg: number;
   fov: number;
+  fps: number;
+  posX: number;
+  posZ: number;
+  canWalk: boolean;
+  moving: boolean;
 }
 
 interface SurfaceSceneOptions {
@@ -100,34 +105,36 @@ ${NOISE_GLSL}
 uniform float uScale;
 uniform float uAmp;
 uniform float uCloudSea;
+uniform float uBaked;
 uniform float uTime;
+attribute float aHeight;
 varying vec3 vWorldPos;
 varying vec3 vNormal;
 varying float vHeight;
 
+/* deslocamento GPU — usado apenas no mar de nuvens (gigantes gasosos) */
 float terrainH(vec2 xz) {
   vec2 p = xz * uScale;
-  float h;
-  if (uCloudSea > 0.5) {
-    float bands = sin(xz.y * 0.045 + fbm(vec3(xz * 0.006, uTime * 0.05)) * 3.0);
-    h = bands * uAmp * 0.5 + fbm(vec3(xz * 0.008, uTime * 0.04)) * uAmp * 0.6;
-  } else {
-    h = fbm(vec3(p, 3.7)) * uAmp;
-    h += ridged(vec3(p * 0.4, 9.2)) * uAmp * 0.55;
-  }
-  return h;
+  float bands = sin(xz.y * 0.045 + fbm(vec3(xz * 0.006, uTime * 0.05)) * 3.0);
+  return bands * uAmp * 0.5 + fbm(vec3(xz * 0.008, uTime * 0.04)) * uAmp * 0.6;
 }
 
 void main() {
   vec3 pos = position;
-  float h = terrainH(pos.xz);
-  pos.y += h;
+  float h;
+  if (uBaked > 0.5) {
+    /* terreno sólido: alturas pré-calculadas na CPU (colisão precisa) */
+    h = aHeight * uAmp;
+    vNormal = normalize(normal);
+  } else {
+    h = terrainH(pos.xz);
+    pos.y += h;
+    float e = 0.6;
+    float hx = terrainH(pos.xz + vec2(e, 0.0));
+    float hz = terrainH(pos.xz + vec2(0.0, e));
+    vNormal = normalize(vec3(h - hx, e, h - hz));
+  }
   vHeight = h / max(uAmp, 0.001);
-
-  float e = 0.6;
-  float hx = terrainH(pos.xz + vec2(e, 0.0));
-  float hz = terrainH(pos.xz + vec2(0.0, e));
-  vNormal = normalize(vec3(h - hx, e, h - hz));
 
   vec4 wp = modelMatrix * vec4(pos, 1.0);
   vWorldPos = wp.xyz;
@@ -337,6 +344,134 @@ const BODY_PRESETS: Record<
   mars: { kind: 2, a: "#b06a3f", b: "#6e3f22", c: "#d89a6a", bandFreq: 0, bandAmp: 0, spot: false },
 };
 
+/* ------------------- ruído JS (espelho do GLSL) ------------------- */
+
+function hash3(x: number, y: number, z: number): number {
+  const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453123;
+  return s - Math.floor(s);
+}
+
+function vnoise(x: number, y: number, z: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const w = zf * zf * (3 - 2 * zf);
+  const c000 = hash3(xi, yi, zi),     c100 = hash3(xi + 1, yi, zi);
+  const c010 = hash3(xi, yi + 1, zi), c110 = hash3(xi + 1, yi + 1, zi);
+  const c001 = hash3(xi, yi, zi + 1), c101 = hash3(xi + 1, yi, zi + 1);
+  const c011 = hash3(xi, yi + 1, zi + 1), c111 = hash3(xi + 1, yi + 1, zi + 1);
+  const x00 = c000 + (c100 - c000) * u, x10 = c010 + (c110 - c010) * u;
+  const x01 = c001 + (c101 - c001) * u, x11 = c011 + (c111 - c011) * u;
+  const y0 = x00 + (x10 - x00) * v, y1 = x01 + (x11 - x01) * v;
+  return y0 + (y1 - y0) * w;
+}
+
+function fbm(x: number, y: number, z: number): number {
+  let a = 0.5, s = 0;
+  for (let i = 0; i < 5; i++) {
+    s += a * vnoise(x, y, z);
+    x *= 2.02; y *= 2.02; z *= 2.02;
+    a *= 0.5;
+  }
+  return s;
+}
+
+function ridged(x: number, y: number, z: number): number {
+  let a = 0.5, s = 0;
+  for (let i = 0; i < 4; i++) {
+    const n = 1 - Math.abs(2 * vnoise(x, y, z) - 1);
+    s += a * n * n;
+    x *= 2.1; y *= 2.1; z *= 2.1;
+    a *= 0.5;
+  }
+  return s;
+}
+
+/**
+ * Altura do terreno sólido (unidades de mundo). Mesma fonte de verdade
+ * usada para assar a geometria, posicionar rochas e seguir o chão na
+ * caminhada WASD — por isso a colisão é exata.
+ */
+function terrainHeight(
+  x: number,
+  z: number,
+  amp: number,
+  dunes: number
+): number {
+  let h = fbm(x * 0.006, 3.7, z * 0.006) * amp * 3.1;
+  h += ridged(x * 0.0028, 9.2, z * 0.0028) * amp * 2.3;
+  h += fbm(x * 0.045, 17.9, z * 0.045) * amp * 0.55;
+
+  /* afloramentos rochosos / bordas de cratera (estilo Pathfinder) */
+  const rock = fbm(x * 0.016, 55.3, z * 0.016);
+  if (rock > 0.72) h += (rock - 0.72) * 60;
+
+  /* campo de dunas com orientação rotacionada e envelope irregular */
+  if (dunes > 0) {
+    const w = fbm(x * 0.012, 77.1, z * 0.012);
+    const dir = x * 0.86 + z * 0.5;
+    const env = 0.35 + 0.65 * fbm(x * 0.02, 31.7, z * 0.02);
+    h += Math.sin(dir * 0.13 + w * 3.2) * amp * 0.62 * dunes * env;
+  }
+  return h;
+}
+
+/* --------------------------- shader rochas --------------------------- */
+
+const ROCK_VERT = /* glsl */ `
+varying vec3 vN;
+varying vec3 vWp;
+varying vec3 vTint;
+
+void main() {
+  vec3 tint = vec3(1.0);
+  #ifdef USE_INSTANCING_COLOR
+    tint = instanceColor;
+  #endif
+  vTint = tint;
+
+  vec4 p = vec4(position, 1.0);
+  vec3 n = normal;
+  #ifdef USE_INSTANCING
+    p = instanceMatrix * p;
+    n = mat3(instanceMatrix) * n;
+  #endif
+
+  vec4 wp = modelMatrix * p;
+  vWp = wp.xyz;
+  vN = normalize(mat3(modelMatrix) * n);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+const ROCK_FRAG = /* glsl */ `
+uniform vec3 uSunDir;
+uniform float uAmbient;
+uniform float uSunStrength;
+uniform vec3 uSunTint;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+varying vec3 vN;
+varying vec3 vWp;
+varying vec3 vTint;
+
+void main() {
+  vec3 N = normalize(vN);
+  vec3 L = normalize(uSunDir);
+  float dif = clamp(dot(N, L), 0.0, 1.0);
+  float wrap = clamp(dot(N, L) * 0.5 + 0.5, 0.0, 1.0);
+  vec3 col = vTint * (uAmbient + uSunStrength * mix(wrap, dif, 0.7));
+  col *= mix(vec3(1.0), uSunTint, 0.4);
+
+  float dist = distance(vWp, cameraPosition);
+  float fog = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);
+  col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
 /* ----------------------------- classe ----------------------------- */
 
 export class SurfaceScene {
@@ -362,6 +497,18 @@ export class SurfaceScene {
   private lastInteract = 0;
   private eyeHeight = 2.2;
   private teleTimer = 0;
+
+  /* caminhada WASD + colisão com o terreno */
+  private keys = new Set<string>();
+  private walkX = 0;
+  private walkZ = 0;
+  private camY = 2.2;
+  private moving = false;
+  private canWalk = true;
+  private heightAt: (x: number, z: number) => number = () => 0;
+  private frames = 0;
+  private fpsTimer = 0;
+  private fps = 60;
 
   private skyUniforms: Record<string, THREE.IUniform> = {};
   private terrainUniforms: Record<string, THREE.IUniform> = {};
@@ -439,6 +586,10 @@ export class SurfaceScene {
     this.scene.add(sky);
 
     /* ---------- terreno ---------- */
+    const duneAmp = THREE.MathUtils.clamp(r.dunes ?? 0, 0, 3);
+    this.canWalk = !d.cloudSea;
+    this.heightAt = (x, z) => terrainHeight(x, z, d.terrainAmp, duneAmp);
+
     this.terrainUniforms = {
       uBase: { value: new THREE.Color(d.terrainBase) },
       uMid: { value: new THREE.Color(d.terrainMid) },
@@ -448,6 +599,7 @@ export class SurfaceScene {
       uScale: { value: d.terrainScale },
       uAmp: { value: d.terrainAmp },
       uCloudSea: { value: d.cloudSea ? 1 : 0 },
+      uBaked: { value: 0 },
       uCloudShadow: { value: d.effects === "clouds" ? 0.3 : 0 },
       uSunDir: { value: sunDir },
       uTime: { value: 0 },
@@ -456,17 +608,46 @@ export class SurfaceScene {
       uSunTint: { value: new THREE.Color(r.sunTint ?? "#ffffff") },
       uSparkle: { value: THREE.MathUtils.clamp(r.sparkle ?? 0, 0, 1.5) },
     };
+
+    let terrainGeo: THREE.BufferGeometry;
+    if (this.canWalk) {
+      /* sólido: alturas assadas na CPU → colisão exata para caminhada WASD */
+      terrainGeo = new THREE.PlaneGeometry(2000, 2000, 176, 176);
+      terrainGeo.rotateX(-Math.PI / 2);
+      const pos = terrainGeo.attributes.position as THREE.BufferAttribute;
+      const heights = new Float32Array(pos.count);
+      const normAmp = Math.max(d.terrainAmp * 5.5, 1);
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        const h = this.heightAt(x, z);
+        pos.setY(i, h);
+        heights[i] = h / normAmp;
+      }
+      terrainGeo.setAttribute("aHeight", new THREE.BufferAttribute(heights, 1));
+      terrainGeo.computeVertexNormals();
+      this.terrainUniforms.uAmp.value = normAmp;
+      this.terrainUniforms.uBaked.value = 1;
+      this.eyeHeight = 2.2;
+      this.camY = this.heightAt(0, 0) + this.eyeHeight;
+    } else {
+      /* mar de nuvens: deslocamento animado na GPU */
+      terrainGeo = new THREE.PlaneGeometry(2600, 2600, 220, 220);
+      terrainGeo.rotateX(-Math.PI / 2);
+      this.eyeHeight = d.terrainAmp * 0.55 + 2.3;
+    }
     const terrain = new THREE.Mesh(
-      new THREE.PlaneGeometry(2600, 2600, 220, 220),
+      terrainGeo,
       new THREE.ShaderMaterial({
         vertexShader: TERRAIN_VERT,
         fragmentShader: TERRAIN_FRAG,
         uniforms: this.terrainUniforms,
       })
     );
-    terrain.geometry.rotateX(-Math.PI / 2);
     this.scene.add(terrain);
-    this.eyeHeight = d.terrainAmp * 0.55 + 2.3;
+
+    /* ---------- campo de rochas 3D ---------- */
+    if (this.canWalk && r.rockField) this.addRocks(r.rockField);
 
     /* ---------- estrelas ---------- */
     if (d.starsVisible && d.starDensity > 0) {
@@ -612,12 +793,67 @@ export class SurfaceScene {
     this.scene.add(this.dust);
   }
 
+  /** rochas espalhadas pelo terreno (dodecaedros instanciados, flat-shaded) */
+  private addRocks(rf: { count: number; maxScale: number; colorA: string; colorB: string }) {
+    const count = Math.max(1, Math.min(rf.count, 600));
+    const geo = new THREE.DodecahedronGeometry(1, 0);
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: ROCK_VERT,
+      fragmentShader: ROCK_FRAG,
+      uniforms: {
+        uSunDir: this.terrainUniforms.uSunDir,
+        uAmbient: this.terrainUniforms.uAmbient,
+        uSunStrength: this.terrainUniforms.uSunStrength,
+        uSunTint: this.terrainUniforms.uSunTint,
+        uFogColor: this.terrainUniforms.uFogColor,
+        uFogDensity: this.terrainUniforms.uFogDensity,
+      },
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    const dummy = new THREE.Object3D();
+    const colA = new THREE.Color(rf.colorA);
+    const colB = new THREE.Color(rf.colorB);
+    const tmp = new THREE.Color();
+
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      /* mais densas perto do visitante, esparsas ao longe */
+      const radius = 7 + 690 * Math.pow(Math.random(), 1.55);
+      const x = Math.cos(ang) * radius;
+      const z = Math.sin(ang) * radius;
+      const scale = 0.45 + Math.pow(Math.random(), 2.2) * rf.maxScale;
+
+      dummy.position.set(x, this.heightAt(x, z) - scale * 0.32, z);
+      dummy.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI
+      );
+      dummy.scale.set(
+        scale,
+        scale * (0.5 + Math.random() * 0.4),
+        scale * (0.75 + Math.random() * 0.45)
+      );
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+
+      tmp.copy(colA).lerp(colB, Math.random()).multiplyScalar(0.72 + Math.random() * 0.55);
+      mesh.setColorAt(i, tmp);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this.scene.add(mesh);
+  }
+
   private bind() {
     const el = this.renderer.domElement;
     el.addEventListener("pointerdown", this.onDown);
     window.addEventListener("pointermove", this.onMove);
     window.addEventListener("pointerup", this.onUp);
     el.addEventListener("wheel", this.onWheel, { passive: false });
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("blur", this.onBlur);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(this.container);
 
@@ -661,6 +897,28 @@ export class SurfaceScene {
     this.lastInteract = this.wallTime;
   };
 
+  private static MOVE_KEYS = new Set([
+    "KeyW", "KeyA", "KeyS", "KeyD",
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "ShiftLeft", "ShiftRight",
+  ]);
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (SurfaceScene.MOVE_KEYS.has(e.code)) {
+      this.keys.add(e.code);
+      if (e.code.startsWith("Arrow")) e.preventDefault();
+      this.lastInteract = this.wallTime;
+    }
+  };
+
+  private onKeyUp = (e: KeyboardEvent) => {
+    this.keys.delete(e.code);
+  };
+
+  private onBlur = () => {
+    this.keys.clear();
+  };
+
   private resize() {
     if (this.disposed) return;
     const w = Math.max(1, this.container.clientWidth);
@@ -686,15 +944,54 @@ export class SurfaceScene {
     this.camera.fov = this.fov;
     this.camera.updateProjectionMatrix();
 
+    /* caminhada WASD + colisão com o terreno */
+    const d = this.opts.def;
+    if (this.canWalk) {
+      let f = 0;
+      let s = 0;
+      if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) f += 1;
+      if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) f -= 1;
+      if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) s += 1;
+      if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) s -= 1;
+      const sprint = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+
+      if (f !== 0 || s !== 0) {
+        /* passada mais larga em gravidade baixa — saltitar na Lua! */
+        const base = 11 * Math.pow(9.81 / Math.max(d.gravityMs2, 0.05), 0.3);
+        const sp = base * (sprint ? 2.6 : 1) * dt;
+        const sinY = Math.sin(this.yaw);
+        const cosY = Math.cos(this.yaw);
+        let nx = this.walkX + (sinY * f - cosY * s) * sp;
+        let nz = this.walkZ + (cosY * f + sinY * s) * sp;
+        const rr = Math.hypot(nx, nz);
+        if (rr > 900) {
+          nx *= 900 / rr;
+          nz *= 900 / rr;
+        }
+        this.walkX = nx;
+        this.walkZ = nz;
+        this.moving = true;
+        this.lastInteract = this.wallTime;
+      } else {
+        this.moving = false;
+      }
+
+      const bob = this.moving ? Math.sin(this.wallTime * 7.5) * 0.1 : 0;
+      const targetY = this.heightAt(this.walkX, this.walkZ) + this.eyeHeight + bob;
+      this.camY += (targetY - this.camY) * Math.min(1, dt * 6);
+    } else {
+      /* flutuando sobre o mar de nuvens */
+      this.camY = this.eyeHeight + Math.sin(this.wallTime * 1.1) * 0.05;
+    }
+
     /* câmera em primeira pessoa */
-    const bob = Math.sin(this.wallTime * 1.1) * 0.05;
-    const py = this.eyeHeight + bob;
-    this.camera.position.set(0, py, 0);
+    const py = this.camY;
+    this.camera.position.set(this.walkX, py, this.walkZ);
     const cp = Math.cos(this.pitch);
     this.camera.lookAt(
-      cp * Math.sin(this.yaw),
+      this.walkX + cp * Math.sin(this.yaw),
       py + Math.sin(this.pitch),
-      cp * Math.cos(this.yaw)
+      this.walkZ + cp * Math.cos(this.yaw)
     );
 
     /* uniforms de tempo */
@@ -706,6 +1003,15 @@ export class SurfaceScene {
       this.dust.position.y = Math.sin(this.wallTime * 0.3) * 0.4;
     }
 
+    /* FPS (média de 1 s) */
+    this.frames++;
+    this.fpsTimer += dt;
+    if (this.fpsTimer >= 1) {
+      this.fps = Math.round(this.frames / this.fpsTimer);
+      this.frames = 0;
+      this.fpsTimer = 0;
+    }
+
     /* telemetria ~10 Hz */
     this.teleTimer += dt;
     if (this.teleTimer >= 0.1) {
@@ -715,6 +1021,11 @@ export class SurfaceScene {
         azimuthDeg: azDeg,
         pitchDeg: THREE.MathUtils.radToDeg(this.pitch),
         fov: this.fov,
+        fps: this.fps,
+        posX: this.walkX,
+        posZ: this.walkZ,
+        canWalk: this.canWalk,
+        moving: this.moving,
       });
     }
 
@@ -729,6 +1040,9 @@ export class SurfaceScene {
     window.removeEventListener("pointermove", this.onMove);
     window.removeEventListener("pointerup", this.onUp);
     el.removeEventListener("wheel", this.onWheel);
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("blur", this.onBlur);
     this.ro.disconnect();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;

@@ -123,6 +123,28 @@ input[type="range"].speed::-moz-range-thumb {
   box-shadow: 0 0 0 1px rgba(245, 179, 66, 0.8), 0 0 14px rgba(245, 179, 66, 0.55);
 }
 
+/* ---------- chips de telemetria (modo visita) ---------- */
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(4, 6, 12, 0.72);
+  backdrop-filter: blur(6px);
+  padding: 3px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(139, 147, 167, 0.9);
+}
+.stat strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- scrollbars ---------- */
 .scroll-slim::-webkit-scrollbar {
   width: 5px;

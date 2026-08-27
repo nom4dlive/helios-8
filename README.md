@@ -20,6 +20,7 @@ Pouse em **23 corpos** e veja o mundo como um visitante:
 - Céu com a cor real de cada atmosfera (céu negro na Lua, caramelo em Marte, laranja em Vênus e Titã, azul na Terra).
 - **Tamanho angular real** do Sol e dos planetas/lua no céu — Júpiter ocupa 19° visto de Io; Marte cobre 40° visto de Fobos; a Terra tem 1,9° vista da Lua.
 - Terreno procedural fiel: enxofre amarelo em Io, gelo rachado em Europa, dunas de hidrocarboneto em Titã, mar de nuvens nos gigantes gasosos.
+- **Exploração livre com `WASD` + `Shift`** nos corpos sólidos: colisão exata com o relevo, passada ampliada em gravidade baixa, rochas 3D espalhadas e HUD com FPS/coordenadas (inspirado em simuladores de pouso).
 - Telemetria de superfície: gravidade, pressão, temperatura, duração do dia e bússola.
 - "Diário do visitante" com o que você realmente veria (fontes: Venera, Voyager 2, Cassini/Huygens, Curiosity, Apollo).
 
@@ -71,8 +72,12 @@ npm run build
 |---|---|
 | **Entrar** na superfície | Selecionar um corpo → botão **"Visitar superfície"**, ou teclar `V` |
 | Olhar ao redor | Arrastar |
+| **Caminhar** pelo terreno | `W` `A` `S` `D` ou setas (corpos sólidos) |
+| **Correr** | Segurar `Shift` |
 | Aproximar o horizonte (FOV) | Rolar o mouse |
 | **Sair** e voltar ao mapa | `Esc` ou botão "Voltar ao mapa" |
+
+Nos corpos sólidos você desembarca e pode **explorar livremente**: a câmera segue o relevo com colisão exata, a passada é mais larga em gravidade baixa (é possível "saltitar" na Lua), e rochas 3D espalhadas pelo chão projetam sombras junto aos afloramentos e dunas. O HUD mostra FPS e coordenadas em tempo real. Nos gigantes gasosos você flutua sobre o mar de nuvens (sem caminhada).
 
 ---
 

@@ -25,7 +25,16 @@ function Chip({ label, value }: { label: string; value: string }) {
 
 export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [tele, setTele] = useState<SurfaceTelemetry>({ azimuthDeg: 0, pitchDeg: 0, fov: 70 });
+  const [tele, setTele] = useState<SurfaceTelemetry>({
+    azimuthDeg: 0,
+    pitchDeg: 0,
+    fov: 70,
+    fps: 60,
+    posX: 0,
+    posZ: 0,
+    canWalk: !view.cloudSea,
+    moving: false,
+  });
 
   const sunDiffuse = (view.realism?.sunDiffuse ?? 0) >= 0.5;
   const sunEarthRatio = view.sunAngularDeg / 0.533;
@@ -102,6 +111,28 @@ export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }
         </button>
       </div>
 
+      {/* estatísticas: FPS e posição (estilo simulador) */}
+      <div className="pointer-events-none absolute right-5 top-[76px] z-30 flex flex-col items-end gap-1 font-mono">
+        <span className="stat">
+          <span>FPS</span>
+          <strong className={tele.fps < 30 ? "text-[#ff9a6a]" : "text-solar-hot"}>{tele.fps}</strong>
+        </span>
+        {tele.canWalk && (
+          <span className="stat">
+            <span>POS</span>
+            <strong>
+              {tele.posX.toFixed(0)}, {tele.posZ.toFixed(0)}
+            </strong>
+          </span>
+        )}
+        {tele.canWalk && tele.moving && (
+          <span className="stat" style={{ borderColor: `${accent}88` }}>
+            <span>STATUS</span>
+            <strong className="text-solar-hot">EXPLORANDO</strong>
+          </span>
+        )}
+      </div>
+
       {/* bússola central */}
       <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-center">
         <div className="font-display text-[26px] font-semibold text-ink drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
@@ -168,9 +199,21 @@ export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }
           <div className="animate-pulse font-mono text-[11px] uppercase tracking-[0.24em] text-ink/80 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
             arraste para olhar ao redor
           </div>
+          {tele.canWalk && (
+            <div className="mt-1.5 font-mono text-[10px] tracking-[0.2em] text-solar-hot drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+              WASD — caminhar · SHIFT — correr
+            </div>
+          )}
           <div className="mt-1 font-mono text-[9px] tracking-[0.18em] text-dim">
             role para aproximar o horizonte
           </div>
+        </div>
+      )}
+
+      {/* barra de controles permanente */}
+      {dragged && tele.canWalk && (
+        <div className="pointer-events-none absolute bottom-[92px] left-1/2 z-20 -translate-x-1/2 font-mono text-[8.5px] tracking-[0.22em] text-dim/85 drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+          WASD CAMINHAR · SHIFT CORRER · ARRASTE OLHAR · ESC SAIR
         </div>
       )}
 

@@ -63,6 +63,10 @@ export interface SurfaceViewDef {
     sparkle?: number;
     /** visibilidade da faixa da Via Láctea em céus sem atmosfera */
     milkyWay?: number;
+    /** amplitude do campo de dunas (0 = desligado) */
+    dunes?: number;
+    /** campo de rochas 3D espalhadas pelo terreno */
+    rockField?: { count: number; maxScale: number; colorA: string; colorB: string };
   };
   /** telemetria de superfície */
   gravityMs2: number;
@@ -179,9 +183,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
 
   mars: {
     bodyId: "mars",
-    viewLabel: "Planície basáltica empoeirada",
-    skyTop: "#5a4030",
-    skyHorizon: "#c9996a",
+    viewLabel: "Planície rochosa com dunas",
+    skyTop: "#4c3322",
+    skyHorizon: "#cf9a66",
     sunAngularDeg: 0.35,
     sunElevationDeg: 35,
     sunAzimuthDeg: 50,
@@ -189,9 +193,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     sunColor: "#f5e8d0",
     starsVisible: false,
     starDensity: 0.12,
-    terrainBase: "#b06a3f",
-    terrainMid: "#8a4f2e",
-    terrainDark: "#5a3220",
+    terrainBase: "#c1512a",
+    terrainMid: "#8a4a26",
+    terrainDark: "#5e3018",
     terrainScale: 2.8,
     terrainAmp: 2.8,
     cloudSea: false,
@@ -823,7 +827,14 @@ const AIRLESS = {
 
 export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism"]>> = {
   /* Sol 2,8× maior: disco ofuscante coroado por halo, sombras de navalha */
-  mercury: { ...AIRLESS, glareBoost: 3.4, sunStrength: 1.75, sunTint: "#fff2d8", sparkle: 0.45 },
+  mercury: {
+    ...AIRLESS,
+    glareBoost: 3.4,
+    sunStrength: 1.75,
+    sunTint: "#fff2d8",
+    sparkle: 0.45,
+    rockField: { count: 100, maxScale: 4.5, colorA: "#5c574e", colorB: "#8d8578" },
+  },
 
   /* Miller: o Sol some — apenas um clarear difuso âmbar no teto de nuvens de H₂SO₄ */
   venus: {
@@ -833,6 +844,8 @@ export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism
     sunStrength: 0.28,
     sunTint: "#ffd9a0",
     skyBands: { amp: 0.38, scale: 2.3, drift: 0.018, colorA: "#eec27f", colorB: "#a97a3c" },
+    /* basaltos arredondados pela erosão química — fotos Venera 13/14 */
+    rockField: { count: 120, maxScale: 4, colorA: "#6e5a3e", colorB: "#a3855c" },
   },
 
   earth: {
@@ -844,26 +857,65 @@ export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism
   },
 
   /* Apollo: regolito cinza com "brilho de vidro" e céu negro absoluto */
-  moon: { ...AIRLESS, glareBoost: 2.6, sparkle: 0.85, milkyWay: 0.42 },
+  moon: {
+    ...AIRLESS,
+    glareBoost: 2.6,
+    sparkle: 0.85,
+    milkyWay: 0.42,
+    rockField: { count: 130, maxScale: 5, colorA: "#4e4c48", colorB: "#83807a" },
+  },
 
-  /* Mariner/Curiosity: céu butterscotch, horizonte luminoso pela poeira suspensa */
+  /* Pathfinder/Curiosity: ferrugem viva, dunas, rochas basálticas espalhadas */
   mars: {
     glareBoost: 1.15,
     ambient: 0.26,
     sunStrength: 1.0,
     sunTint: "#ffe6cc",
     skyBands: { amp: 0.08, scale: 5.0, drift: 0.05, colorA: "#f0cdb0", colorB: "#c99873" },
+    dunes: 1.15,
+    rockField: { count: 190, maxScale: 7.5, colorA: "#6e3a20", colorB: "#a45c34" },
   },
 
-  phobos: { ...AIRLESS, glareBoost: 2.0, sparkle: 0.4, sunStrength: 1.3, ambient: 0.09 },
-  deimos: { ...AIRLESS, glareBoost: 1.9, sparkle: 0.4, sunStrength: 1.25, ambient: 0.09 },
+  phobos: {
+    ...AIRLESS,
+    glareBoost: 2.0,
+    sparkle: 0.4,
+    sunStrength: 1.3,
+    ambient: 0.09,
+    rockField: { count: 60, maxScale: 3.5, colorA: "#4a4238", colorB: "#776b5c" },
+  },
+  deimos: {
+    ...AIRLESS,
+    glareBoost: 1.9,
+    sparkle: 0.4,
+    sunStrength: 1.25,
+    ambient: 0.09,
+    rockField: { count: 45, maxScale: 2.5, colorA: "#52483c", colorB: "#7d7264" },
+  },
 
   /* Galileo: planícies de enxofre sob céu negro; Júpiter domina o horizonte */
-  io: { ...AIRLESS, glareBoost: 2.7, sunStrength: 1.35, sparkle: 0.3 },
+  io: {
+    ...AIRLESS,
+    glareBoost: 2.7,
+    sunStrength: 1.35,
+    sparkle: 0.3,
+    rockField: { count: 70, maxScale: 3.5, colorA: "#8a7a2e", colorB: "#c4a94e" },
+  },
 
   europa: { ...AIRLESS, glareBoost: 2.5, sparkle: 0.9, sunTint: "#f4f0ff" },
-  ganymede: { ...AIRLESS, glareBoost: 2.4, sparkle: 0.55 },
-  callisto: { ...AIRLESS, glareBoost: 2.3, sparkle: 0.5, ambient: 0.08 },
+  ganymede: {
+    ...AIRLESS,
+    glareBoost: 2.4,
+    sparkle: 0.55,
+    rockField: { count: 90, maxScale: 5, colorA: "#57504a", colorB: "#847c70" },
+  },
+  callisto: {
+    ...AIRLESS,
+    glareBoost: 2.3,
+    sparkle: 0.5,
+    ambient: 0.08,
+    rockField: { count: 110, maxScale: 5, colorA: "#46423a", colorB: "#726b5e" },
+  },
 
   /* Cassini: mar de metano espelhado, smog laranja, Sol difuso e baço */
   titan: {
@@ -873,6 +925,8 @@ export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism
     sunStrength: 0.32,
     sunTint: "#ffd9a8",
     skyBands: { amp: 0.32, scale: 2.7, drift: 0.014, colorA: "#eda452", colorB: "#9c6420" },
+    /* dunas equatoriais de hidrocarbonetos (areia orgânica escura) */
+    dunes: 0.7,
   },
   enceladus: { ...AIRLESS, glareBoost: 2.6, sparkle: 1.0, sunTint: "#f2f6ff" },
   rhea: { ...AIRLESS, glareBoost: 2.4, sparkle: 0.8, sunTint: "#f2f6ff" },
@@ -881,7 +935,14 @@ export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism
   titania: { ...AIRLESS, glareBoost: 2.2, sparkle: 0.6, sunTint: "#eef4ff" },
   oberon: { ...AIRLESS, glareBoost: 2.2, sparkle: 0.55, sunTint: "#eef4ff" },
 
-  triton: { ...AIRLESS, glareBoost: 2.5, sparkle: 0.85, sunTint: "#f0f6ff", ambient: 0.1 },
+  triton: {
+    ...AIRLESS,
+    glareBoost: 2.5,
+    sparkle: 0.85,
+    sunTint: "#f0f6ff",
+    ambient: 0.1,
+    rockField: { count: 55, maxScale: 3, colorA: "#9aa4ac", colorB: "#d4dce2" },
+  },
   nereid: { ...AIRLESS, glareBoost: 2.0, sparkle: 0.5, sunStrength: 1.2 },
 
   /* Miller: o Sol vira um ponto minúsculo porém ~27× mais brilhante que a Lua cheia */
