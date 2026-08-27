@@ -47,6 +47,23 @@ export interface SurfaceViewDef {
   fogColor: string;
   fogDensity: number;
   effects: "none" | "dust" | "haze" | "clouds";
+  /** refinamentos de realismo — série Ron Miller + fotografias de sondas */
+  realism?: {
+    /** 0 = disco solar nítido · 1 = brilho difuso filtrado por nuvens (Vênus/Titã) */
+    sunDiffuse?: number;
+    /** intensidade do halo/glare ao redor do Sol */
+    glareBoost?: number;
+    /** faixas de nuvens no céu (gigantes gasosos, Terra, smog de Titã) */
+    skyBands?: { amp: number; scale: number; drift: number; colorA: string; colorB: string };
+    /** luz ambiente do terreno — baixo = sombras duras (vácuo), alto = luz difusa (Vênus) */
+    ambient?: number;
+    sunStrength?: number;
+    sunTint?: string;
+    /** cintilação de regolito (grãos vítreos sob o Sol) */
+    sparkle?: number;
+    /** visibilidade da faixa da Via Láctea em céus sem atmosfera */
+    milkyWay?: number;
+  };
   /** telemetria de superfície */
   gravityMs2: number;
   dayLength: string;
@@ -89,8 +106,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     temperature: "-173 °C a 427 °C",
     visibleBodies: [],
     notes: [
-      "O Sol aparece ~2,8× maior do que da Terra.",
-      "Sem atmosfera: o céu é negro mesmo ao meio-dia e as estrelas são visíveis.",
+      "O Sol aparece ~2,8× maior do que da Terra — um disco ofuscante coroado por halo.",
+      "Sem atmosfera: céu negro absoluto ao meio-dia, estrelas e Via Láctea visíveis.",
+      "Contraste brutal: luz solar direta contra sombras de borda nítida, sem penumbra.",
     ],
   },
 
@@ -121,8 +139,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     temperature: "465 °C",
     visibleBodies: [],
     notes: [
-      "Nuvens de CO₂ e ácido sulfúrico escondem o Sol — só um brilho difuso alaranjado.",
-      "As fotos das sondas Venera mostram um céu amarelo-laranja e rochas basálticas escuras.",
+      "O Sol desaparece: resta apenas um clarear difuso âmbar no teto de nuvens de H₂SO₄.",
+      "Fotos das Venera 13/14: céu butterscotch em todas as direções, sem horizonte nítido.",
+      "Luz totalmente difusa — as rochas basálticas quase não projetam sombra.",
     ],
   },
 
@@ -217,8 +236,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     temperature: "-108 °C",
     visibleBodies: [],
     notes: [
-      "Não há superfície sólida: você flutua sobre um oceano de nuvens de amônia em bandas.",
-      "A gravidade aqui é 2,5× a da Terra.",
+      "O Sol é um ponto minúsculo (0,1°), porém ~27× mais brilhante que a Lua cheia.",
+      "Você flutua sobre um oceano de nuvens de amônia em faixas creme, ferrugem e marrom.",
+      "As faixas derivam em velocidades diferentes — turbulência visível ao longo de horas.",
     ],
   },
 
@@ -249,8 +269,8 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     temperature: "-139 °C",
     visibleBodies: [],
     notes: [
-      "As nuvens de amônia formam um mar pálido e dourado, quase sem contraste.",
-      "O Sol é um ponto brilhante 10× menor do que visto da Terra.",
+      "O Sol é um disco 10× menor que o visto da Terra, mas ainda ofuscante.",
+      "As nuvens de amônia formam um mar dourado-pálido, com faixas mais suaves que as de Júpiter.",
     ],
   },
 
@@ -787,4 +807,126 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
   },
 };
 
-export const getSurfaceView = (id: string): SurfaceViewDef | null => SURFACE_VIEWS[id] ?? null;
+/**
+ * Refinamentos de realismo mapeados da série de Ron Miller
+ * ("O Sol visto de cada planeta", ex-diretor de arte da NASA) e cruzados
+ * com fotografias reais: Venera 13/14, Mariner 10/MESSENGER, Apollo,
+ * Pathfinder/Curiosity/Perseverance, Voyager 1/2, Galileo, Cassini-Huygens.
+ */
+const AIRLESS = {
+  glareBoost: 2.4,
+  ambient: 0.07,
+  sunStrength: 1.5,
+  sparkle: 0.6,
+  milkyWay: 0.35,
+} as const;
+
+export const REALISM_PATCHES: Record<string, NonNullable<SurfaceViewDef["realism"]>> = {
+  /* Sol 2,8× maior: disco ofuscante coroado por halo, sombras de navalha */
+  mercury: { ...AIRLESS, glareBoost: 3.4, sunStrength: 1.75, sunTint: "#fff2d8", sparkle: 0.45 },
+
+  /* Miller: o Sol some — apenas um clarear difuso âmbar no teto de nuvens de H₂SO₄ */
+  venus: {
+    sunDiffuse: 1,
+    glareBoost: 0.35,
+    ambient: 0.82,
+    sunStrength: 0.28,
+    sunTint: "#ffd9a0",
+    skyBands: { amp: 0.38, scale: 2.3, drift: 0.018, colorA: "#eec27f", colorB: "#a97a3c" },
+  },
+
+  earth: {
+    glareBoost: 1.35,
+    ambient: 0.32,
+    sunStrength: 1.12,
+    sunTint: "#fff3de",
+    skyBands: { amp: 0.2, scale: 3.6, drift: 0.028, colorA: "#ffffff", colorB: "#d9e8f6" },
+  },
+
+  /* Apollo: regolito cinza com "brilho de vidro" e céu negro absoluto */
+  moon: { ...AIRLESS, glareBoost: 2.6, sparkle: 0.85, milkyWay: 0.42 },
+
+  /* Mariner/Curiosity: céu butterscotch, horizonte luminoso pela poeira suspensa */
+  mars: {
+    glareBoost: 1.15,
+    ambient: 0.26,
+    sunStrength: 1.0,
+    sunTint: "#ffe6cc",
+    skyBands: { amp: 0.08, scale: 5.0, drift: 0.05, colorA: "#f0cdb0", colorB: "#c99873" },
+  },
+
+  phobos: { ...AIRLESS, glareBoost: 2.0, sparkle: 0.4, sunStrength: 1.3, ambient: 0.09 },
+  deimos: { ...AIRLESS, glareBoost: 1.9, sparkle: 0.4, sunStrength: 1.25, ambient: 0.09 },
+
+  /* Galileo: planícies de enxofre sob céu negro; Júpiter domina o horizonte */
+  io: { ...AIRLESS, glareBoost: 2.7, sunStrength: 1.35, sparkle: 0.3 },
+
+  europa: { ...AIRLESS, glareBoost: 2.5, sparkle: 0.9, sunTint: "#f4f0ff" },
+  ganymede: { ...AIRLESS, glareBoost: 2.4, sparkle: 0.55 },
+  callisto: { ...AIRLESS, glareBoost: 2.3, sparkle: 0.5, ambient: 0.08 },
+
+  /* Cassini: mar de metano espelhado, smog laranja, Sol difuso e baço */
+  titan: {
+    sunDiffuse: 0.92,
+    glareBoost: 0.55,
+    ambient: 0.68,
+    sunStrength: 0.32,
+    sunTint: "#ffd9a8",
+    skyBands: { amp: 0.32, scale: 2.7, drift: 0.014, colorA: "#eda452", colorB: "#9c6420" },
+  },
+  enceladus: { ...AIRLESS, glareBoost: 2.6, sparkle: 1.0, sunTint: "#f2f6ff" },
+  rhea: { ...AIRLESS, glareBoost: 2.4, sparkle: 0.8, sunTint: "#f2f6ff" },
+
+  miranda: { ...AIRLESS, glareBoost: 2.2, sparkle: 0.7, sunTint: "#eef4ff" },
+  titania: { ...AIRLESS, glareBoost: 2.2, sparkle: 0.6, sunTint: "#eef4ff" },
+  oberon: { ...AIRLESS, glareBoost: 2.2, sparkle: 0.55, sunTint: "#eef4ff" },
+
+  triton: { ...AIRLESS, glareBoost: 2.5, sparkle: 0.85, sunTint: "#f0f6ff", ambient: 0.1 },
+  nereid: { ...AIRLESS, glareBoost: 2.0, sparkle: 0.5, sunStrength: 1.2 },
+
+  /* Miller: o Sol vira um ponto minúsculo porém ~27× mais brilhante que a Lua cheia */
+  jupiter: {
+    sunDiffuse: 0.1,
+    glareBoost: 4.6,
+    ambient: 0.5,
+    sunStrength: 0.9,
+    sunTint: "#fff8ea",
+    skyBands: { amp: 0.52, scale: 5.6, drift: 0.05, colorA: "#e9d6b2", colorB: "#a3794f" },
+  },
+
+  /* Cassini: deck dourado-pálido; faixas mais suaves que as de Júpiter */
+  saturn: {
+    glareBoost: 3.6,
+    ambient: 0.55,
+    sunStrength: 0.85,
+    sunTint: "#fff6dd",
+    skyBands: { amp: 0.34, scale: 4.4, drift: 0.034, colorA: "#eedcb0", colorB: "#c3a26b" },
+  },
+
+  /* Voyager 2: céu aqua quase sem feições, Sol como estrela ofuscante */
+  uranus: {
+    glareBoost: 3.2,
+    ambient: 0.6,
+    sunStrength: 0.75,
+    sunTint: "#f4ffff",
+    skyBands: { amp: 0.1, scale: 3.0, drift: 0.02, colorA: "#c2f0f2", colorB: "#8fd6da" },
+  },
+
+  /* Voyager 2: azul profundo, tênues faixas e cirros; Sol é farol puntual */
+  neptune: {
+    glareBoost: 3.8,
+    ambient: 0.5,
+    sunStrength: 0.8,
+    sunTint: "#f2f6ff",
+    skyBands: { amp: 0.22, scale: 4.2, drift: 0.03, colorA: "#82b2ff", colorB: "#3a66d8" },
+  },
+};
+
+/** aplica o patch de realismo sobre a definição base (não-mutável) */
+export function getViewRealism(id: string): SurfaceViewDef | null {
+  const base = SURFACE_VIEWS[id];
+  if (!base) return null;
+  return { ...base, realism: REALISM_PATCHES[id] ?? {} };
+}
+
+export const getSurfaceView = (id: string): SurfaceViewDef | null => getViewRealism(id);

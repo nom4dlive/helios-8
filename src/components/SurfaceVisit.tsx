@@ -26,6 +26,12 @@ function Chip({ label, value }: { label: string; value: string }) {
 export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [tele, setTele] = useState<SurfaceTelemetry>({ azimuthDeg: 0, pitchDeg: 0, fov: 70 });
+
+  const sunDiffuse = (view.realism?.sunDiffuse ?? 0) >= 0.5;
+  const sunEarthRatio = view.sunAngularDeg / 0.533;
+  const sunChip = sunDiffuse
+    ? "DIFUSO NAS NUVENS"
+    : `Ø ${view.sunAngularDeg.toFixed(2).replace(".", ",")}° · ${sunEarthRatio.toFixed(1).replace(".", ",")}× TERRA`;
   const [ready, setReady] = useState(false);
   const [dragged, setDragged] = useState(false);
   const [showNotes, setShowNotes] = useState(true);
@@ -171,6 +177,14 @@ export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }
       {/* telemetria inferior */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-4">
         <div className="flex flex-wrap gap-1.5">
+          {view.sunVisible && (
+            <div className="border px-3 py-1.5 backdrop-blur-sm" style={{ borderColor: `${accent}66`, background: "rgba(4,6,12,0.7)" }}>
+              <div className="font-mono text-[8px] tracking-[0.22em]" style={{ color: accent }}>
+                SOL NO CÉU
+              </div>
+              <div className="mt-0.5 font-mono text-[12px] font-medium text-ink tabular-nums">{sunChip}</div>
+            </div>
+          )}
           <Chip label="GRAVIDADE" value={`${view.gravityMs2.toLocaleString("pt-BR")} m/s²`} />
           <Chip label="PRESSÃO" value={view.pressure} />
           <Chip label="TEMPERATURA" value={view.temperature} />

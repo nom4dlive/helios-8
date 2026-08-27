@@ -23,6 +23,16 @@ Pouse em **23 corpos** e veja o mundo como um visitante:
 - Telemetria de superfície: gravidade, pressão, temperatura, duração do dia e bússola.
 - "Diário do visitante" com o que você realmente veria (fontes: Venera, Voyager 2, Cassini/Huygens, Curiosity, Apollo).
 
+### Realismo das vistas — referência Ron Miller
+O modo de visita foi refinado para reproduzir as características da série *"O Sol visto de cada planeta"* (Ron Miller, ex-diretor de arte da NASA). Cada corpo recebe um **patch de realismo** (`REALISM_PATCHES` em `src/data/surfaceViews.ts`) com:
+
+- **Sol difuso vs. nítido** — em Vênus e Titã o Sol é apenas um clarear difuso filtrado pelas nuvens (`sunDiffuse`); nos corpos sem atmosfera é um disco de borda dura coroado por um halo de *glare* cujo brilho cresce nos gigantes externos (onde o Sol vira um ponto ofuscante).
+- **Faixas de nuvens no céu** (`skyBands`) — bandas de amônia em Júpiter e Saturno, o smog laranja de Titã e névoas tênues em Marte, com deriva lenta ao longo do tempo.
+- **Contraste de iluminação** (`ambient` / `sunStrength`) — sombras de borda nítida no vácuo (Mercúrio, Lua) contra luz totalmente difusa sob o teto de nuvens de Vênus.
+- **Cintilação de regolito** (`sparkle`) — os grãos vítreos do solo refletem o Sol, como nas fotos da Apollo e da MESSENGER.
+- **Via Láctea** (`milkyWay`) — faixa galáctica sutil visível apenas nos céus sem atmosfera.
+- **Chip "SOL NO CÉU"** no HUD com o diâmetro angular real do Sol comparado ao visto da Terra (ex.: Mercúrio `Ø 1,40° · 2,6× Terra`).
+
 ---
 
 ## 🚀 Como executar

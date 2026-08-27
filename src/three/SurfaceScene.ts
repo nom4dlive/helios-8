@@ -32,6 +32,16 @@ uniform vec3 uHaze;
 uniform float uHazeBoost;
 uniform float uCloudMix;
 uniform float uTime;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform float uSunDiffuse;
+uniform float uSunGlow;
+uniform float uBandsAmp;
+uniform float uBandScale;
+uniform float uBandDrift;
+uniform vec3 uBandA;
+uniform vec3 uBandB;
+uniform float uMilkyWay;
 varying vec3 vDir;
 
 void main() {
@@ -45,12 +55,41 @@ void main() {
   float hazeBand = exp(-pow(h * 5.5, 2.0));
   col = mix(col, uHaze, hazeBand * uHazeBoost);
 
-  // nuvens (Terra)
+  // faixas de nuvens / smog (gigantes gasosos, Titã, tênues em Marte)
+  if (uBandsAmp > 0.001) {
+    float lat = h * uBandScale;
+    float warp = fbm(vec3(d.x * 1.6, h * 2.2, d.z * 1.6) + uTime * uBandDrift) - 0.5;
+    float bands = sin(lat * 3.14159 + warp * 3.4);
+    float b2 = fbm(vec3(d.x * 4.0, h * 5.0, d.z * 4.0) - uTime * uBandDrift * 0.6);
+    float mask = smoothstep(-0.7, 0.7, bands) * (0.55 + 0.45 * b2);
+    vec3 bandCol = mix(uBandB, uBandA, mask);
+    float lift = smoothstep(-0.25, 0.15, h); // bandas somem abaixo do horizonte
+    col = mix(col, bandCol, mask * uBandsAmp * lift * (0.4 + 0.6 * b2));
+  }
+
+  // nuvens em flocos (Terra)
   if (uCloudMix > 0.001) {
     float cn = fbm(d * 3.2 + vec3(uTime * 0.012, 0.0, uTime * 0.006));
     float cloud = smoothstep(0.55, 0.78, cn) * smoothstep(0.02, 0.28, h);
     col = mix(col, vec3(1.0) * (0.75 + 0.25 * cn), cloud * uCloudMix);
   }
+
+  // Via Láctea em céus sem atmosfera
+  if (uMilkyWay > 0.001) {
+    float mw = exp(-pow(dot(d, normalize(vec3(0.42, 0.3, 0.86))) * 2.4, 2.0));
+    float grain = 0.45 + 0.55 * fbm(d * 7.0 + 3.1);
+    col += vec3(0.055, 0.062, 0.095) * mw * grain * uMilkyWay * (1.0 - uSunDiffuse);
+  }
+
+  // Sol: brilho difuso filtrado por nuvens (Vênus/Titã) + corona nítida
+  float sd = clamp(dot(d, normalize(uSunDir)), 0.0, 1.0);
+  if (uSunDiffuse > 0.001) {
+    float swirl = 0.75 + 0.25 * fbm(d * 5.0 + vec3(0.0, uTime * 0.02, 0.0));
+    float soft = pow(sd, 4.0) * 0.9 + pow(sd, 14.0) * 1.3;
+    col += uSunColor * soft * swirl * uSunDiffuse * 0.85;
+  }
+  col += uSunColor * pow(sd, 320.0) * 2.2 * (1.0 - uSunDiffuse) * uSunGlow;
+  col += uSunColor * pow(sd, 40.0) * 0.5 * uSunGlow;
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -107,12 +146,17 @@ uniform float uCloudSea;
 uniform float uCloudShadow;
 uniform float uTime;
 uniform vec3 uSunDir;
+uniform float uAmbient;
+uniform float uSunStrength;
+uniform vec3 uSunTint;
+uniform float uSparkle;
 varying vec3 vWorldPos;
 varying vec3 vNormal;
 varying float vHeight;
 
 void main() {
   vec3 N = normalize(vNormal);
+  vec3 L = normalize(uSunDir);
 
   float detail;
   vec3 col;
@@ -122,15 +166,34 @@ void main() {
     col = mix(uDark, uBase, bands);
     col = mix(col, uMid, smoothstep(0.4, 0.9, detail));
   } else {
-    detail = fbm(vec3(vWorldPos.xz * 0.09, 1.3));
+    // domain warp para manchas orgânicas (basalto, enxofre, dunas)
+    vec2 w = vWorldPos.xz * 0.02;
+    vec2 warp = vec2(fbm(vec3(w, 2.2)), fbm(vec3(w + 5.3, 8.4))) - 0.5;
+    detail = fbm(vec3(vWorldPos.xz * 0.09 + warp * 3.0, 1.3));
     float fine = fbm(vec3(vWorldPos.xz * 0.5, 7.7));
     col = mix(uDark, uBase, smoothstep(-0.4, 0.7, vHeight));
     col = mix(col, uMid, smoothstep(0.35, 0.8, detail) * 0.7);
     col *= 0.82 + 0.36 * fine;
   }
 
-  float dif = clamp(dot(N, normalize(uSunDir)) * 0.5 + 0.5, 0.0, 1.0);
-  col *= 0.35 + 0.85 * dif;
+  // iluminação direcional com contraste configurável por corpo
+  float dif = clamp(dot(N, L), 0.0, 1.0);
+  float wrap = clamp(dot(N, L) * 0.5 + 0.5, 0.0, 1.0);
+  col *= uAmbient + uSunStrength * mix(wrap, dif, 0.72);
+  col *= mix(vec3(1.0), uSunTint, clamp(uSunStrength, 0.0, 1.0) * 0.5);
+
+  // cintilação de regolito: grãos vítreos refletem o Sol (Apollo/MESSENGER)
+  if (uSparkle > 0.001) {
+    vec2 cell = floor(vWorldPos.xz * 22.0);
+    float sp = pow(hash1(vec3(cell, 3.7)), 30.0);
+    col += vec3(1.0, 0.98, 0.92) * sp * uSparkle * dif * 1.6;
+  }
+
+  // brilho especular do Sol sobre o topo das nuvens (gigantes gasosos)
+  if (uCloudSea > 0.5) {
+    float sh = pow(clamp(dot(N, L), 0.0, 1.0), 3.0);
+    col += uSunTint * sh * 0.22;
+  }
 
   if (uCloudShadow > 0.001) {
     float cs = fbm(vec3(vWorldPos.xz * 0.008 + uTime * 0.02, 4.4));
@@ -334,6 +397,10 @@ export class SurfaceScene {
 
   private build() {
     const d = this.opts.def;
+    const r = d.realism ?? {};
+    const sunDiffuse = THREE.MathUtils.clamp(r.sunDiffuse ?? 0, 0, 1);
+    const glareBoost = THREE.MathUtils.clamp(r.glareBoost ?? 1, 0, 8);
+    const bands = r.skyBands;
 
     /* direção do Sol (para iluminação) */
     const sunDir = new THREE.Vector3();
@@ -347,6 +414,16 @@ export class SurfaceScene {
       uHazeBoost: { value: d.effects === "haze" ? 0.85 : 0.45 },
       uCloudMix: { value: d.effects === "clouds" ? 0.55 : 0 },
       uTime: { value: 0 },
+      uSunDir: { value: sunDir.clone() },
+      uSunColor: { value: new THREE.Color(d.sunColor) },
+      uSunDiffuse: { value: sunDiffuse },
+      uSunGlow: { value: glareBoost * 0.45 },
+      uBandsAmp: { value: bands ? THREE.MathUtils.clamp(bands.amp, 0, 1) : 0 },
+      uBandScale: { value: bands ? Math.max(0.5, bands.scale) : 3 },
+      uBandDrift: { value: bands ? Math.max(0, bands.drift) : 0.02 },
+      uBandA: { value: new THREE.Color(bands ? bands.colorA : "#ffffff") },
+      uBandB: { value: new THREE.Color(bands ? bands.colorB : "#cccccc") },
+      uMilkyWay: { value: THREE.MathUtils.clamp(r.milkyWay ?? 0, 0, 1) },
     };
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(1800, 40, 24),
@@ -374,6 +451,10 @@ export class SurfaceScene {
       uCloudShadow: { value: d.effects === "clouds" ? 0.3 : 0 },
       uSunDir: { value: sunDir },
       uTime: { value: 0 },
+      uAmbient: { value: THREE.MathUtils.clamp(r.ambient ?? 0.35, 0.02, 1) },
+      uSunStrength: { value: THREE.MathUtils.clamp(r.sunStrength ?? 1.0, 0, 2.5) },
+      uSunTint: { value: new THREE.Color(r.sunTint ?? "#ffffff") },
+      uSparkle: { value: THREE.MathUtils.clamp(r.sparkle ?? 0, 0, 1.5) },
     };
     const terrain = new THREE.Mesh(
       new THREE.PlaneGeometry(2600, 2600, 220, 220),
@@ -427,20 +508,53 @@ export class SurfaceScene {
       this.scene.add(stars);
     }
 
-    /* ---------- Sol ---------- */
-    const sunScale = Math.max(2.2, 1500 * Math.tan(rad(d.sunAngularDeg / 2)) * 2.4);
-    const sunMat = new THREE.SpriteMaterial({
-      map: makeSunTexture(d.sunColor),
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      opacity: d.sunVisible ? 1 : 0.32,
-    });
-    const sun = new THREE.Sprite(sunMat);
-    sun.scale.set(sunScale, sunScale, 1);
-    sun.position.copy(sunDir).multiplyScalar(1500);
-    sun.renderOrder = 4;
-    this.scene.add(sun);
+    /* ---------- Sol: núcleo nítido + halo de glare (série Ron Miller) ---------- */
+    const sunTex = makeSunTexture(d.sunColor);
+    const sunPos = sunDir.clone().multiplyScalar(1500);
+
+    // núcleo — disco solar real; encolhe quando o Sol é difuso (Vênus/Titã)
+    const coreScale = THREE.MathUtils.clamp(
+      1500 * Math.tan(rad(d.sunAngularDeg / 2)) * 2.4 * (1 - sunDiffuse),
+      0,
+      220
+    );
+    if (coreScale > 0.4 && d.sunVisible) {
+      const coreMat = new THREE.SpriteMaterial({
+        map: sunTex,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        opacity: 1,
+      });
+      const core = new THREE.Sprite(coreMat);
+      core.scale.set(coreScale, coreScale, 1);
+      core.position.copy(sunPos);
+      core.renderOrder = 4;
+      this.scene.add(core);
+    }
+
+    // halo de glare — ofuscamento atmosférico / brilho de ponto estelar
+    const glareScale = THREE.MathUtils.clamp(
+      Math.max(26, 1500 * Math.tan(rad(d.sunAngularDeg / 2)) * 9.5) *
+        (0.55 + 0.45 * glareBoost) *
+        (1 - sunDiffuse * 0.72),
+      0,
+      620
+    );
+    if (glareScale > 1 && d.sunVisible) {
+      const glareMat = new THREE.SpriteMaterial({
+        map: sunTex,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        opacity: THREE.MathUtils.clamp(0.42 * glareBoost, 0, 1),
+      });
+      const glare = new THREE.Sprite(glareMat);
+      glare.scale.set(glareScale, glareScale, 1);
+      glare.position.copy(sunPos);
+      glare.renderOrder = 3;
+      this.scene.add(glare);
+    }
 
     /* ---------- corpos no céu ---------- */
     for (const sb of d.visibleBodies) this.addSkyBody(sb, sunDir);
