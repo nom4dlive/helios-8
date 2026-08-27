@@ -1,1 +1,195 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Unbounded", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --color-void: #04060c;
+  --color-panel: #0a0f1a;
+  --color-ink: #e8ecf4;
+  --color-dim: #8b93a7;
+  --color-solar: #f5b342;
+  --color-solar-hot: #ffd27a;
+  --color-ice: #8fd3ff;
+  --color-line: rgba(255, 255, 255, 0.09);
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
+canvas {
+  display: block;
+  outline: none;
+}
+
+/* ---------- orbital labels ---------- */
+.orbit-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -140%);
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 236, 244, 0.72);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  transition: color 160ms ease, opacity 240ms ease;
+  will-change: transform;
+  user-select: none;
+}
+.orbit-label .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px currentColor;
+  transition: transform 160ms ease;
+}
+.orbit-label:hover,
+.orbit-label.is-hovered {
+  color: var(--color-solar-hot);
+}
+.orbit-label:hover .dot,
+.orbit-label.is-hovered .dot {
+  transform: scale(1.6);
+}
+.orbit-label.is-selected {
+  color: var(--color-solar);
+  font-weight: 600;
+}
+.orbit-label.is-moon {
+  font-size: 9px;
+  opacity: 0.85;
+}
+.orbit-label.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- range slider ---------- */
+input[type="range"].speed {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: ew-resize;
+}
+input[type="range"].speed::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    rgba(245, 179, 66, 0.9),
+    rgba(245, 179, 66, 0.25)
+  );
+}
+input[type="range"].speed::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5.5px;
+  border-radius: 999px;
+  background: #ffd27a;
+  border: 2px solid #04060c;
+  box-shadow: 0 0 0 1px rgba(245, 179, 66, 0.8), 0 0 14px rgba(245, 179, 66, 0.55);
+  transition: transform 120ms ease;
+}
+input[type="range"].speed::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+input[type="range"].speed::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    rgba(245, 179, 66, 0.9),
+    rgba(245, 179, 66, 0.25)
+  );
+}
+input[type="range"].speed::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #ffd27a;
+  border: 2px solid #04060c;
+  box-shadow: 0 0 0 1px rgba(245, 179, 66, 0.8), 0 0 14px rgba(245, 179, 66, 0.55);
+}
+
+/* ---------- scrollbars ---------- */
+.scroll-slim::-webkit-scrollbar {
+  width: 5px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgba(245, 179, 66, 0.25);
+  border-radius: 3px;
+}
+.scroll-slim::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 179, 66, 0.5);
+}
+
+/* ---------- animations ---------- */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.panel-in {
+  animation: panel-in 320ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(143, 211, 255, 0.9);
+  }
+  50% {
+    opacity: 0.35;
+    box-shadow: 0 0 2px rgba(143, 211, 255, 0.4);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slow {
+  animation: spin-slow 14s linear infinite;
+}
