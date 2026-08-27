@@ -34,6 +34,7 @@ export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }
     posZ: 0,
     canWalk: !view.cloudSea,
     moving: false,
+    panoActive: false,
   });
 
   const sunDiffuse = (view.realism?.sunDiffuse ?? 0) >= 0.5;
@@ -129,6 +130,12 @@ export default function SurfaceVisit({ bodyId, bodyName, accent, view, onClose }
           <span className="stat" style={{ borderColor: `${accent}88` }}>
             <span>STATUS</span>
             <strong className="text-solar-hot">EXPLORANDO</strong>
+          </span>
+        )}
+        {tele.panoActive && (
+          <span className="stat" style={{ borderColor: "rgba(245,179,66,0.45)" }}>
+            <span className="pulse-dot h-1.5 w-1.5 self-center rounded-full bg-solar" />
+            <strong className="text-solar-hot">PANORAMA 360°</strong>
           </span>
         )}
       </div>

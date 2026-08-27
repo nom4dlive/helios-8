@@ -19,10 +19,22 @@ Uma demonstração interativa de aprendizado do sistema solar construída com **
 Pouse em **23 corpos** e veja o mundo como um visitante:
 - Céu com a cor real de cada atmosfera (céu negro na Lua, caramelo em Marte, laranja em Vênus e Titã, azul na Terra).
 - **Tamanho angular real** do Sol e dos planetas/lua no céu — Júpiter ocupa 19° visto de Io; Marte cobre 40° visto de Fobos; a Terra tem 1,9° vista da Lua.
+- **Caminhe pela superfície** com `WASD` (+ `Shift` para correr), com colisão exata no relevo e passada que varia conforme a gravidade de cada mundo.
+- **Marte em panorama 360°** fotorreal (estilo Blockade Labs) fundido ao terreno procedural, com o Sol da imagem detectado e alinhado à iluminação em runtime.
 - Terreno procedural fiel: enxofre amarelo em Io, gelo rachado em Europa, dunas de hidrocarboneto em Titã, mar de nuvens nos gigantes gasosos.
 - **Exploração livre com `WASD` + `Shift`** nos corpos sólidos: colisão exata com o relevo, passada ampliada em gravidade baixa, rochas 3D espalhadas e HUD com FPS/coordenadas (inspirado em simuladores de pouso).
 - Telemetria de superfície: gravidade, pressão, temperatura, duração do dia e bússola.
 - "Diário do visitante" com o que você realmente veria (fontes: Venera, Voyager 2, Cassini/Huygens, Curiosity, Apollo).
+
+### Panorama 360° fotorreal (Marte)
+Marte combina o melhor de duas técnicas: uma **cúpula equiretangular 360°** no estilo dos skyboxes do [Blockade Labs Skybox AI](https://skybox.blockadelabs.com) fundida ao **terreno procedural interativo**. O motor calibra tudo em runtime (`addPanorama`/`onPanoramaLoaded` em `src/three/SurfaceScene.ts`):
+
+- **Detecção do Sol** — varre os pixels mais brilhantes da metade superior da imagem, calcula o centróide e converte (u, v) em azimute/elevação.
+- **Alinhamento** — um quatérnio gira a cúpula para que o Sol gravado na foto coincida com a direção de iluminação usada pelo terreno (sombras, poeira e brilho coerentes).
+- **Névoa adaptativa** — amostra a cor média da faixa do horizonte do panorama e a aplica como cor de névoa, de modo que o terreno procedural emenda sem costura nas mesas e crateras distantes da foto.
+- O Sol e o glare procedurais são ocultados quando a cúpula assume; se o carregamento falhar, o céu procedural entra como fallback.
+
+**Usando um skybox do Blockade Labs:** baixe o panorama equiretangular (2:1) e salve-o em `public/panos/mars.jpg` — o carregador tenta esse caminho primeiro antes do ativo remoto. Qualquer panorama equiretangular funciona; a calibração de Sol/névoa é automática.
 
 ### Realismo das vistas — referência Ron Miller
 O modo de visita foi refinado para reproduzir as características da série *"O Sol visto de cada planeta"* (Ron Miller, ex-diretor de arte da NASA). Cada corpo recebe um **patch de realismo** (`REALISM_PATCHES` em `src/data/surfaceViews.ts`) com:

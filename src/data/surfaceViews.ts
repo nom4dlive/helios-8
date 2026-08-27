@@ -24,6 +24,12 @@ export interface SkyBodyDef {
 export interface SurfaceViewDef {
   bodyId: string;
   viewLabel: string;
+  /**
+   * Panorama equiretangular 360° opcional (estilo Blockade Labs Skybox AI).
+   * urls são tentadas em ordem — a primeira que carregar vira a cúpula do céu.
+   * O motor detecta o Sol na imagem e alinha iluminação/névoa em runtime.
+   */
+  panorama?: { urls: string[] };
   /** gradiente do céu */
   skyTop: string;
   skyHorizon: string;
@@ -183,7 +189,13 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
 
   mars: {
     bodyId: "mars",
-    viewLabel: "Planície rochosa com dunas",
+    viewLabel: "Panorama 360° fotorreal + terreno procedural",
+    panorama: {
+      urls: [
+        "panos/mars.jpg",
+        "https://image.qwenlm.ai/generated-images/d91318a7-f59b-4879-8108-2652cee59b5d/_result.png",
+      ],
+    },
     skyTop: "#4c3322",
     skyHorizon: "#cf9a66",
     sunAngularDeg: 0.35,
@@ -208,8 +220,9 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
     temperature: "Média -63 °C",
     visibleBodies: [],
     notes: [
-      "O céu é caramelo/salmão devido à poeira de óxido de ferro em suspensão.",
-      "Ao entardecer o céu perto do Sol fica azulado — o oposto da Terra.",
+      "Céu 360° fotorreal (estilo skybox) fundido ao terreno 3D: o Sol da imagem é detectado e alinhado à iluminação em tempo real.",
+      "O céu é caramelo/salmão pela poeira de óxido de ferro; ao entardecer, azul perto do Sol.",
+      "Colinas, mesas e crateras distantes do panorama continuam o terreno procedural no horizonte.",
     ],
   },
 

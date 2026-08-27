@@ -11,6 +11,7 @@ export interface SurfaceTelemetry {
   posZ: number;
   canWalk: boolean;
   moving: boolean;
+  panoActive: boolean;
 }
 
 interface SurfaceSceneOptions {
@@ -509,6 +510,10 @@ export class SurfaceScene {
   private frames = 0;
   private fpsTimer = 0;
   private fps = 60;
+  private panoActive = false;
+  private sunCore: THREE.Sprite | null = null;
+  private sunGlare: THREE.Sprite | null = null;
+  private dustMat: THREE.PointsMaterial | null = null;
 
   private skyUniforms: Record<string, THREE.IUniform> = {};
   private terrainUniforms: Record<string, THREE.IUniform> = {};
@@ -553,37 +558,9 @@ export class SurfaceScene {
     const sunDir = new THREE.Vector3();
     dirFromAzEl(d.sunAzimuthDeg, d.sunElevationDeg, sunDir);
 
-    /* ---------- céu ---------- */
-    this.skyUniforms = {
-      uSkyTop: { value: new THREE.Color(d.skyTop) },
-      uSkyHorizon: { value: new THREE.Color(d.skyHorizon) },
-      uHaze: { value: new THREE.Color(d.fogColor) },
-      uHazeBoost: { value: d.effects === "haze" ? 0.85 : 0.45 },
-      uCloudMix: { value: d.effects === "clouds" ? 0.55 : 0 },
-      uTime: { value: 0 },
-      uSunDir: { value: sunDir.clone() },
-      uSunColor: { value: new THREE.Color(d.sunColor) },
-      uSunDiffuse: { value: sunDiffuse },
-      uSunGlow: { value: glareBoost * 0.45 },
-      uBandsAmp: { value: bands ? THREE.MathUtils.clamp(bands.amp, 0, 1) : 0 },
-      uBandScale: { value: bands ? Math.max(0.5, bands.scale) : 3 },
-      uBandDrift: { value: bands ? Math.max(0, bands.drift) : 0.02 },
-      uBandA: { value: new THREE.Color(bands ? bands.colorA : "#ffffff") },
-      uBandB: { value: new THREE.Color(bands ? bands.colorB : "#cccccc") },
-      uMilkyWay: { value: THREE.MathUtils.clamp(r.milkyWay ?? 0, 0, 1) },
-    };
-    const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(1800, 40, 24),
-      new THREE.ShaderMaterial({
-        vertexShader: SKY_VERT,
-        fragmentShader: SKY_FRAG,
-        uniforms: this.skyUniforms,
-        side: THREE.BackSide,
-        depthWrite: false,
-      })
-    );
-    sky.renderOrder = -10;
-    this.scene.add(sky);
+    /* ---------- céu: panorama equiretangular 360° ou procedural ---------- */
+    if (d.panorama) this.addPanorama(d);
+    else this.buildSky(d, sunDir, sunDiffuse, glareBoost);
 
     /* ---------- terreno ---------- */
     const duneAmp = THREE.MathUtils.clamp(r.dunes ?? 0, 0, 3);
@@ -707,11 +684,11 @@ export class SurfaceScene {
         blending: THREE.AdditiveBlending,
         opacity: 1,
       });
-      const core = new THREE.Sprite(coreMat);
-      core.scale.set(coreScale, coreScale, 1);
-      core.position.copy(sunPos);
-      core.renderOrder = 4;
-      this.scene.add(core);
+      this.sunCore = new THREE.Sprite(coreMat);
+      this.sunCore.scale.set(coreScale, coreScale, 1);
+      this.sunCore.position.copy(sunPos);
+      this.sunCore.renderOrder = 4;
+      this.scene.add(this.sunCore);
     }
 
     // halo de glare — ofuscamento atmosférico / brilho de ponto estelar
@@ -730,11 +707,11 @@ export class SurfaceScene {
         blending: THREE.AdditiveBlending,
         opacity: THREE.MathUtils.clamp(0.42 * glareBoost, 0, 1),
       });
-      const glare = new THREE.Sprite(glareMat);
-      glare.scale.set(glareScale, glareScale, 1);
-      glare.position.copy(sunPos);
-      glare.renderOrder = 3;
-      this.scene.add(glare);
+      this.sunGlare = new THREE.Sprite(glareMat);
+      this.sunGlare.scale.set(glareScale, glareScale, 1);
+      this.sunGlare.position.copy(sunPos);
+      this.sunGlare.renderOrder = 3;
+      this.scene.add(this.sunGlare);
     }
 
     /* ---------- corpos no céu ---------- */
@@ -742,6 +719,173 @@ export class SurfaceScene {
 
     /* ---------- poeira (Marte) ---------- */
     if (d.effects === "dust") this.addDust(d);
+  }
+
+  /** Céu procedural em gradiente (fallback / corpos sem panorama) */
+  private buildSky(
+    d: SurfaceViewDef,
+    sunDir: THREE.Vector3,
+    sunDiffuse: number,
+    glareBoost: number
+  ) {
+    const r = d.realism ?? {};
+    const bands = r.skyBands;
+    this.skyUniforms = {
+      uSkyTop: { value: new THREE.Color(d.skyTop) },
+      uSkyHorizon: { value: new THREE.Color(d.skyHorizon) },
+      uHaze: { value: new THREE.Color(d.fogColor) },
+      uHazeBoost: { value: d.effects === "haze" ? 0.85 : 0.45 },
+      uCloudMix: { value: d.effects === "clouds" ? 0.55 : 0 },
+      uTime: { value: 0 },
+      uSunDir: { value: sunDir.clone() },
+      uSunColor: { value: new THREE.Color(d.sunColor) },
+      uSunDiffuse: { value: sunDiffuse },
+      uSunGlow: { value: glareBoost * 0.45 },
+      uBandsAmp: { value: bands ? THREE.MathUtils.clamp(bands.amp, 0, 1) : 0 },
+      uBandScale: { value: bands ? Math.max(0.5, bands.scale) : 3 },
+      uBandDrift: { value: bands ? Math.max(0, bands.drift) : 0.02 },
+      uBandA: { value: new THREE.Color(bands ? bands.colorA : "#ffffff") },
+      uBandB: { value: new THREE.Color(bands ? bands.colorB : "#cccccc") },
+      uMilkyWay: { value: THREE.MathUtils.clamp(r.milkyWay ?? 0, 0, 1) },
+    };
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(1800, 40, 24),
+      new THREE.ShaderMaterial({
+        vertexShader: SKY_VERT,
+        fragmentShader: SKY_FRAG,
+        uniforms: this.skyUniforms,
+        side: THREE.BackSide,
+        depthWrite: false,
+      })
+    );
+    sky.renderOrder = -10;
+    this.scene.add(sky);
+  }
+
+  /**
+   * Cúpula com panorama equiretangular 360° (estilo Blockade Labs Skybox AI).
+   * Tenta as URLs em ordem — aceita um skybox local em public/panos/mars.jpg
+   * ou o ativo remoto — e calibra a cena em runtime:
+   *  1. detecta o Sol gravado na imagem (pixel mais brilhante do céu);
+   *  2. gira a cúpula para alinhar esse Sol à direção de iluminação do terreno;
+   *  3. amostra a cor média da faixa do horizonte e a usa como névoa,
+   *     para o terreno procedural emendar sem costura no fundo fotorreal.
+   */
+  private addPanorama(d: SurfaceViewDef) {
+    const urls = d.panorama?.urls ?? [];
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin("anonymous");
+    const tryLoad = (i: number) => {
+      if (i >= urls.length) {
+        const sunDir = new THREE.Vector3();
+        dirFromAzEl(d.sunAzimuthDeg, d.sunElevationDeg, sunDir);
+        this.buildSky(d, sunDir, 0, 1.15);
+        return;
+      }
+      loader.load(
+        urls[i],
+        (tex) => this.onPanoramaLoaded(tex, d),
+        undefined,
+        () => tryLoad(i + 1)
+      );
+    };
+    tryLoad(0);
+  }
+
+  private onPanoramaLoaded(tex: THREE.Texture, d: SurfaceViewDef) {
+    if (this.disposed) return;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.max(1, this.renderer.capabilities.getMaxAnisotropy());
+
+    const geo = new THREE.SphereGeometry(1750, 64, 32);
+    geo.scale(-1, 1, 1); // panorama visto por dentro, sem espelhamento
+    const dome = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide, fog: false, depthWrite: false })
+    );
+    dome.renderOrder = -9;
+    this.scene.add(dome);
+    this.panoActive = true;
+
+    /* ---- calibração: Sol da imagem → direção de iluminação da cena ---- */
+    try {
+      const img = tex.image as TexImageSource & { width: number; height: number };
+      const cw = 512;
+      const ch = 256;
+      const cv = document.createElement("canvas");
+      cv.width = cw;
+      cv.height = ch;
+      const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+      ctx.drawImage(img as CanvasImageSource, 0, 0, cw, ch);
+      const data = ctx.getImageData(0, 0, cw, ch).data;
+
+      /* Sol: centróide dos pixels mais brilhantes na metade superior (céu) */
+      let maxL = 0;
+      for (let y = 0; y < ch * 0.55; y++) {
+        for (let x = 0; x < cw; x++) {
+          const i = (y * cw + x) * 4;
+          const l = data[i] + data[i + 1] + data[i + 2];
+          if (l > maxL) maxL = l;
+        }
+      }
+      const thr = maxL * 0.86;
+      let sx = 0;
+      let sy = 0;
+      let sn = 0;
+      for (let y = 0; y < ch * 0.55; y++) {
+        for (let x = 0; x < cw; x++) {
+          const i = (y * cw + x) * 4;
+          const l = data[i] + data[i + 1] + data[i + 2];
+          if (l >= thr) {
+            sx += x;
+            sy += y;
+            sn++;
+          }
+        }
+      }
+      if (sn > 20 && maxL > 500) {
+        const u = sx / sn / cw;
+        const v = sy / sn / ch;
+        const azPano = (u - 0.25) * 360;
+        const elPano = (0.5 - v) * 180;
+        const dirPano = dirFromAzEl(azPano, elPano, new THREE.Vector3()).normalize();
+        const elTarget = THREE.MathUtils.clamp(elPano, 8, 60);
+        const dirTarget = dirFromAzEl(d.sunAzimuthDeg, elTarget, new THREE.Vector3());
+
+        dome.quaternion.setFromUnitVectors(dirPano, dirTarget.clone().normalize());
+        (this.terrainUniforms.uSunDir.value as THREE.Vector3).copy(dirTarget);
+
+        /* o panorama já traz o Sol e o glare — esconde os sprites procedurais */
+        if (this.sunCore) this.sunCore.visible = false;
+        if (this.sunGlare) this.sunGlare.visible = false;
+      }
+
+      /* ---- névoa adaptativa: cor média da faixa do horizonte do panorama ---- */
+      let hr = 0;
+      let hg = 0;
+      let hb = 0;
+      let hn = 0;
+      const y0 = Math.floor(ch * 0.44);
+      const y1 = Math.floor(ch * 0.56);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = 0; x < cw; x += 2) {
+          const i = (y * cw + x) * 4;
+          hr += data[i];
+          hg += data[i + 1];
+          hb += data[i + 2];
+          hn++;
+        }
+      }
+      if (hn > 0) {
+        const horizon = new THREE.Color(hr / hn / 255, hg / hn / 255, hb / hn / 255)
+          .convertSRGBToLinear()
+          .multiplyScalar(0.94);
+        (this.terrainUniforms.uFogColor.value as THREE.Color).copy(horizon);
+        if (this.dustMat) this.dustMat.color.copy(horizon.clone().multiplyScalar(1.25));
+      }
+    } catch {
+      /* imagem protegida por CORS: mantém a cúpula sem calibração */
+    }
   }
 
   private addSkyBody(sb: SkyBodyDef, sunDir: THREE.Vector3) {
@@ -781,7 +925,7 @@ export class SurfaceScene {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     this.dustUniforms = { uTime: { value: 0 } };
-    const mat = new THREE.PointsMaterial({
+    this.dustMat = new THREE.PointsMaterial({
       color: new THREE.Color(d.fogColor).lerp(new THREE.Color("#d8a878"), 0.5),
       size: 0.5,
       sizeAttenuation: true,
@@ -789,7 +933,7 @@ export class SurfaceScene {
       opacity: 0.4,
       depthWrite: false,
     });
-    this.dust = new THREE.Points(geo, mat);
+    this.dust = new THREE.Points(geo, this.dustMat);
     this.scene.add(this.dust);
   }
 
@@ -995,7 +1139,7 @@ export class SurfaceScene {
     );
 
     /* uniforms de tempo */
-    this.skyUniforms.uTime.value = this.wallTime;
+    if (this.skyUniforms.uTime) this.skyUniforms.uTime.value = this.wallTime;
     this.terrainUniforms.uTime.value = this.wallTime;
     if (this.starUniforms.uTime) this.starUniforms.uTime.value = this.wallTime;
     if (this.dust) {
@@ -1026,6 +1170,7 @@ export class SurfaceScene {
         posZ: this.walkZ,
         canWalk: this.canWalk,
         moving: this.moving,
+        panoActive: this.panoActive,
       });
     }
 
@@ -1047,9 +1192,12 @@ export class SurfaceScene {
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-      else if (mat) mat.dispose();
+      const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const mat of mats) {
+        const anyMat = mat as THREE.Material & { map?: THREE.Texture | null };
+        if (anyMat.map) anyMat.map.dispose();
+        mat.dispose();
+      }
     });
     this.renderer.dispose();
     el.remove();
