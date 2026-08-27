@@ -1,5 +1,6 @@
 import type { BodyDef, MoonDef } from "../data/bodies";
 import { fmtInt, fmtNum } from "../data/bodies";
+import { getSurfaceView } from "../data/surfaceViews";
 
 export interface SelInfo {
   kind: "star" | "planet" | "moon";
@@ -17,6 +18,7 @@ interface Props {
   info: SelInfo;
   onClose: () => void;
   onSelect: (id: string) => void;
+  onVisit?: (id: string) => void;
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -36,7 +38,7 @@ function fmtPeriod(days: number): { value: string; sub?: string } {
   return { value: `${fmtNum(abs / 365.25, 1)} anos`, sub: `${fmtInt(Math.round(abs))} dias` };
 }
 
-export default function InfoPanel({ info, onClose, onSelect }: Props) {
+export default function InfoPanel({ info, onClose, onSelect, onVisit }: Props) {
   const d = info.def;
   const m = info.moon;
   const period = m
@@ -44,6 +46,9 @@ export default function InfoPanel({ info, onClose, onSelect }: Props) {
     : d && d.periodDays > 0
       ? fmtPeriod(d.periodDays)
       : null;
+
+  const visitableId = m ? m.id : d?.id;
+  const visitable = visitableId ? getSurfaceView(visitableId) : null;
 
   return (
     <div
@@ -134,6 +139,32 @@ export default function InfoPanel({ info, onClose, onSelect }: Props) {
               <Stat label="LUAS CONHECIDAS" value={`${d.moonsKnown}`} />
             )}
           </>
+        )}
+
+        {/* visita à superfície */}
+        {visitable && visitableId && (
+          <button
+            onClick={() => onVisit?.(visitableId)}
+            className="group my-3 flex w-full items-center gap-3 border border-solar/60 bg-gradient-to-r from-solar/25 to-solar/5 px-3.5 py-3 text-left transition-all duration-200 hover:border-solar-hot hover:from-solar/40 hover:to-solar/10"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="shrink-0 text-solar-hot transition-transform duration-200 group-hover:scale-110">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4" />
+              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+            </svg>
+            <span>
+              <span className="block font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-solar-hot">
+                Visitar superfície
+              </span>
+              <span className="block font-mono text-[8.5px] tracking-[0.14em] text-dim">
+                visão em 1ª pessoa · tecle V
+              </span>
+            </span>
+          </button>
+        )}
+        {!visitable && info.kind === "star" && (
+          <div className="my-3 border border-line bg-white/[0.03] px-3.5 py-2.5 font-mono text-[9.5px] leading-relaxed tracking-[0.08em] text-dim">
+            SUPERFÍCIE NÃO VISITÁVEL — o Sol é uma esfera de plasma a 5.505 °C.
+          </div>
         )}
 
         {/* curiosidade */}

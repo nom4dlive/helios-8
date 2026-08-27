@@ -6,6 +6,8 @@ import NavRail from "./components/NavRail";
 import ControlDock, { type Toggles } from "./components/ControlDock";
 import InfoPanel, { type SelInfo } from "./components/InfoPanel";
 import { sfx, setMuted } from "./lib/sound";
+import SurfaceVisit from "./components/SurfaceVisit";
+import { getSurfaceView } from "./data/surfaceViews";
 
 const DEFAULT_SPEED = 4;
 
@@ -25,6 +27,7 @@ export default function App() {
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [toggles, setToggles] = useState<Toggles>({ orbits: true, labels: true, belt: true });
   const [muted, setMutedState] = useState(false);
+  const [visitId, setVisitId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!mountRef.current || !labelsRef.current) return;
@@ -47,6 +50,31 @@ export default function App() {
       sysRef.current = null;
     };
   }, []);
+
+  /* atalhos do modo de visita: V = visitar, Esc = sair da visita */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && visitId) {
+        setVisitId(null);
+        return;
+      }
+      if ((e.key === "v" || e.key === "V") && !visitId && selectedId) {
+        const v = getSurfaceView(selectedId);
+        if (v) {
+          setVisitId(selectedId);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visitId, selectedId]);
+
+  const handleVisit = (id: string) => {
+    if (getSurfaceView(id)) {
+      sfx.play();
+      setVisitId(id);
+    }
+  };
 
   const info = useMemo<SelInfo | null>(() => {
     if (!selectedId) return null;
@@ -88,6 +116,18 @@ export default function App() {
     }
     return null;
   }, [selectedId]);
+
+  const visitBody = useMemo(() => {
+    if (!visitId) return null;
+    const view = getSurfaceView(visitId);
+    if (!view) return null;
+    if (visitId === "sun") return null;
+    const planet = PLANETS.find((p) => p.id === visitId);
+    if (planet) return { name: planet.name, accent: planet.accent, view };
+    const mf = findMoon(visitId);
+    if (mf) return { name: mf.moon.name, accent: mf.moon.accent, view };
+    return null;
+  }, [visitId]);
 
   const handleTogglePause = () => {
     const next = !paused;
@@ -136,7 +176,12 @@ export default function App() {
       <NavRail selected={selectedId} onSelect={(id) => select(id)} />
 
       {info && (
-        <InfoPanel info={info} onClose={() => select(null)} onSelect={(id) => select(id)} />
+        <InfoPanel
+          info={info}
+          onClose={() => select(null)}
+          onSelect={(id) => select(id)}
+          onVisit={handleVisit}
+        />
       )}
 
       <ControlDock
@@ -152,11 +197,24 @@ export default function App() {
       />
 
       {/* guia de interação */}
-      <div className="pointer-events-none absolute bottom-4 left-4 z-20 hidden flex-col gap-0.5 font-mono text-[9px] tracking-[0.18em] text-dim md:flex">
-        <span>ARRASTE — ORBITAR A CÂMERA</span>
-        <span>ROLE — ZOOM · CLIQUE NUM CORPO — DADOS</span>
-        <span className="text-dim/70">DISTÂNCIAS E TAMANHOS NÃO ESTÃO EM ESCALA REAL</span>
-      </div>
+      {!visitBody && (
+        <div className="pointer-events-none absolute bottom-4 left-4 z-20 hidden flex-col gap-0.5 font-mono text-[9px] tracking-[0.18em] text-dim md:flex">
+          <span>ARRASTE — ORBITAR A CÂMERA · ROLE — ZOOM</span>
+          <span>CLIQUE NUM CORPO — DADOS · V — VISITAR SUPERFÍCIE</span>
+          <span className="text-dim/70">DISTÂNCIAS E TAMANHOS NÃO ESTÃO EM ESCALA REAL</span>
+        </div>
+      )}
+
+      {/* modo de visita à superfície */}
+      {visitBody && visitId && (
+        <SurfaceVisit
+          bodyId={visitId}
+          bodyName={visitBody.name}
+          accent={visitBody.accent}
+          view={visitBody.view}
+          onClose={() => setVisitId(null)}
+        />
+      )}
     </div>
   );
 }
