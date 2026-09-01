@@ -9,10 +9,13 @@ import {
 } from "../data/exoplanets";
 import { fmtNum } from "../data/bodies";
 import { sfx } from "../lib/sound";
+import AlienTeacher from "./AlienTeacher";
 
 interface Props {
   onClose: () => void;
 }
+
+const DAYS_PER_SEC_BASE = 365.25 / 12;
 
 const hzBadge = (p: ExoPlanet) => {
   const s = hzStatus(p.fluxEarth);
@@ -29,6 +32,10 @@ export default function ExoExplorer({ onClose }: Props) {
   const [systemId, setSystemId] = useState(EXO_SYSTEMS[1].id); /* TRAPPIST-1 */
   const [sel, setSel] = useState<ExoSelection | null>({ systemId: EXO_SYSTEMS[1].id });
   const [compare, setCompare] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [spin, setSpin] = useState(1);
+  const [alien, setAlien] = useState(true);
 
   const sys: ExoSystem = EXO_SYSTEMS.find((s) => s.id === systemId) ?? EXO_SYSTEMS[0];
   const selPlanet = sel?.planetId ? sys.planets.find((p) => p.id === sel.planetId) ?? null : null;
@@ -63,6 +70,32 @@ export default function ExoExplorer({ onClose }: Props) {
     setSel({ systemId, planetId: p.id });
     sfx.select();
   };
+
+  const togglePause = () => {
+    setPaused((p) => {
+      const next = !p;
+      sceneRef.current?.setPaused(next);
+      if (next) sfx.pause();
+      else sfx.play();
+      return next;
+    });
+  };
+  const onSpeed = (v: number) => {
+    setSpeed(v);
+    sceneRef.current?.setSpeed(v);
+  };
+  const onSpin = (v: number) => {
+    setSpin(v);
+    sceneRef.current?.setSpin(v);
+  };
+  const toggleAlien = () => {
+    setAlien((a) => !a);
+    sfx.toggle();
+  };
+
+  const dps = DAYS_PER_SEC_BASE * speed;
+  const ritmo =
+    dps >= 365 ? `1s ≈ ${fmtNum(dps / 365.25, 1)} anos` : `1s ≈ ${fmtNum(dps, dps < 10 ? 1 : 0)} dias`;
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-void">
@@ -136,10 +169,77 @@ export default function ExoExplorer({ onClose }: Props) {
         <div className="relative min-w-0 flex-1">
           <div ref={mountRef} className="absolute inset-0" />
           <div ref={labelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" />
-          <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[8.5px] tracking-[0.22em] text-dim/80">
-            ARRASTE — ORBITAR · ROLE — ZOOM · CLIQUE NUM PLANETA — DADOS
-            {compare && " · SOL À DIREITA NA MESMA ESCALA"}
+
+          {/* dock de simulação */}
+          <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 border border-line bg-panel/92 px-2.5 py-1.5 backdrop-blur-md">
+            <button
+              onClick={togglePause}
+              title={paused ? "Reproduzir" : "Pausar"}
+              className={`flex h-8 w-8 items-center justify-center border transition-colors ${
+                paused
+                  ? "border-solar/70 bg-solar/15 text-solar-hot"
+                  : "border-line text-ink hover:border-solar/50 hover:text-solar-hot"
+              }`}
+            >
+              {paused ? (
+                <svg width="11" height="12" viewBox="0 0 11 12" fill="currentColor">
+                  <path d="M1 1l9 5-9 5z" />
+                </svg>
+              ) : (
+                <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+                  <rect x="1" y="1" width="3" height="10" />
+                  <rect x="6" y="1" width="3" height="10" />
+                </svg>
+              )}
+            </button>
+
+            <div className="flex items-center gap-1.5 border-l border-line pl-2.5">
+              <span className="font-mono text-[7.5px] tracking-[0.18em] text-dim">VEL</span>
+              <input
+                type="range"
+                min={0.25}
+                max={8}
+                step={0.25}
+                value={speed}
+                onChange={(e) => onSpeed(parseFloat(e.target.value))}
+                className="slider-solar w-[92px]"
+              />
+              <span className="w-[74px] font-mono text-[8.5px] text-solar-hot tabular-nums">{ritmo}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 border-l border-line pl-2.5">
+              <span className="font-mono text-[7.5px] tracking-[0.18em] text-dim">ROTAÇÃO</span>
+              <input
+                type="range"
+                min={0}
+                max={3}
+                step={0.25}
+                value={spin}
+                onChange={(e) => onSpin(parseFloat(e.target.value))}
+                className="slider-solar w-[70px]"
+              />
+              <span className="w-[30px] font-mono text-[8.5px] text-ink tabular-nums">{fmtNum(spin, 2)}×</span>
+            </div>
+
+            <button
+              onClick={toggleAlien}
+              title="Professor Zyx"
+              className={`flex items-center gap-1.5 border px-2 py-1 font-mono text-[8px] tracking-[0.14em] transition-colors ${
+                alien
+                  ? "border-[#4fc4ae]/60 bg-[#4fc4ae]/10 text-[#7fe8de]"
+                  : "border-line text-dim hover:text-ink"
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[#7fe8de]" style={{ boxShadow: alien ? "0 0 6px #7fe8de" : "none" }} />
+              PROF. ZYX
+            </button>
           </div>
+
+          <div className="pointer-events-none absolute right-3 top-3 z-10 font-mono text-[8px] tracking-[0.2em] text-dim/75">
+            ARRASTE — ORBITAR · ROLE — ZOOM · CLIQUE — DADOS{compare && " · SOL À DIREITA"}
+          </div>
+
+          {alien && <AlienTeacher sys={sys} />}
         </div>
 
         {/* painel de dados */}

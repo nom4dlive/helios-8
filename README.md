@@ -23,6 +23,10 @@ Pouse em **23 corpos** com céu, terreno e iluminação fisicamente motivados (c
 - 12 sistemas reais do **Habitable Worlds Catalog** (TRAPPIST-1, Proxima b, TOI-700 d/e, Teegarden b/c, Kepler-62 e/f, Kepler-452 b…) com dados do NASA Exoplanet Archive.
 - Órbitas pela **3ª lei de Kepler**, zona habitável calculada (Kopparapu) desenhada em verde, estrelas com temperatura/cor/raio reais por tipo espectral.
 - **Comparação lado a lado** com o Sol + planetas rochosos do Sistema Solar, na mesma escala visual.
+- **Superfícies procedurais únicas** por planeta (paleta + ruído de um hash determinístico por classe térmica: temperado / escaldante / gelado / neptuniano), halo atmosférico e inclinação axial variada.
+- **Estrelas vivas**: granulação animada, manchas estelares, escurecimento de limbo e coroa alimentando bloom em meia resolução; fundo com nebulosa e 1.500 estrelas cintilantes.
+- **Controles de simulação**: pausa, velocidade (0,25×–8×) e rotação (0–3×) no dock inferior.
+- **Prof. Zyx, o professor alienígena**: personagem em canvas (flutuação, piscadas, aceno, jetpack) que narra curiosidades em **linguagem TDAH-friendly** — frases curtas, uma ideia por balão, palavras-chave em negrito, efeito máquina de escrever. Alterna fatos gerais de exoplanetas e **fatos dinâmicos do sistema em exibição**. Clique para pular; toggle "PROF. ZYX" liga/desliga.
 
 ## 🛠 Auditoria de renderização e desempenho
 

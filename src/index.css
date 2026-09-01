@@ -99,6 +99,27 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+/* balão do Prof. Zyx — cantos chanfrados + linha de acento */
+.alien-bubble {
+  clip-path: polygon(
+    0 0,
+    calc(100% - 14px) 0,
+    100% 14px,
+    100% 100%,
+    14px 100%,
+    0 calc(100% - 14px)
+  );
+  border-radius: 2px;
+  position: relative;
+}
+.alien-bubble::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-top: 2px solid rgba(127, 232, 222, 0.35);
+}
+
 /* ---------- slider de velocidade ---------- */
 input[type="range"].slider-solar {
   -webkit-appearance: none;
