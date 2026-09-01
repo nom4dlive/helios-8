@@ -106,13 +106,18 @@ export class ExoSystemScene {
   private ro!: ResizeObserver;
   private disposed = false;
 
-  constructor(mount: HTMLElement, labelLayer: HTMLElement, opts: ExoSystemOptions) {
+  constructor(
+    mount: HTMLElement,
+    labelLayer: HTMLElement,
+    opts: ExoSystemOptions,
+    initialSystemId?: string
+  ) {
     this.mount = mount;
     this.labelLayer = labelLayer;
     this.opts = opts;
     this.initGL();
     this.bind();
-    this.build(EXO_SYSTEMS[0].id);
+    this.build(initialSystemId ?? EXO_SYSTEMS[0].id);
     this.clock.start();
     this.loop();
   }
@@ -244,6 +249,8 @@ export class ExoSystemScene {
     this.labels = [];
 
     const sys = EXO_SYSTEMS.find((s) => s.id === systemId) ?? EXO_SYSTEMS[0];
+    /* mantém a seleção sincronizada (o toggle de comparação depende dela) */
+    this.sel = { systemId: sys.id };
 
     /* ---------- sistema exoplanetário ---------- */
     const group = new THREE.Group();

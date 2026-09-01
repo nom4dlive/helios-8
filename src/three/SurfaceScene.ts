@@ -139,6 +139,13 @@ export class SurfaceScene {
   private fwdTmp = new THREE.Vector3();
   private rightTmp = new THREE.Vector3();
 
+  /* panorama 360° */
+  private panoActive = false;
+  private panoMat: THREE.MeshBasicMaterial | null = null;
+  private sunSprites: THREE.Sprite[] = [];
+  private fogUniform: THREE.IUniform | null = null;
+  private sunDirRef: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
+
   private raf = 0;
   private clock = new THREE.Clock();
   private wallTime = 0;
@@ -198,6 +205,7 @@ export class SurfaceScene {
       Math.sin(rad(d.sunElevationDeg)),
       Math.cos(rad(d.sunElevationDeg)) * Math.cos(rad(d.sunAzimuthDeg))
     ).normalize();
+    this.sunDirRef.copy(sunDir);
 
     /* ---------- céu ---------- */
     const bands = r.skyBands;
@@ -255,6 +263,7 @@ export class SurfaceScene {
       core.position.copy(sunPos);
       core.renderOrder = 4;
       this.scene.add(core);
+      this.sunSprites.push(core);
     }
     const glareScale = THREE.MathUtils.clamp(
       Math.max(30, 1600 * Math.tan(rad(d.sunAngularDeg / 2)) * 10) *
@@ -277,6 +286,7 @@ export class SurfaceScene {
       glare.position.copy(sunPos);
       glare.renderOrder = 3;
       this.scene.add(glare);
+      this.sunSprites.push(glare);
     }
 
     /* ---------- astros no céu ---------- */
@@ -387,6 +397,7 @@ export class SurfaceScene {
     const terrain = new THREE.Mesh(geo, terrainMat);
     this.scene.add(terrain);
     this.timeUniforms.push(terrainMat.uniforms.uTime);
+    this.fogUniform = terrainMat.uniforms.uFogColor;
 
     /* ---------- campo de rochas (InstancedMesh) ---------- */
     if (this.canWalk && r.rockField) {
@@ -492,6 +503,125 @@ export class SurfaceScene {
       this.dustRef = dust;
       this.scene.add(dust);
     }
+
+    /* ---------- panorama 360° (cúpula equiretangular calibrada) ---------- */
+    if (d.panorama && d.panorama.urls.length > 0) {
+      void this.loadPanorama(d.panorama.urls);
+    }
+  }
+
+  /**
+   * Cúpula equiretangular com calibração em runtime:
+   * 1. detecta o Sol gravado na foto (centróide dos pixels mais brilhantes);
+   * 2. gira a cúpula (quatérnio) para alinhá-lo à iluminação do terreno;
+   * 3. amostra a cor do horizonte e a usa como névoa → emenda sem costura.
+   */
+  private async loadPanorama(urls: string[]) {
+    let img: HTMLImageElement | null = null;
+    for (const url of urls) {
+      try {
+        img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.crossOrigin = "anonymous";
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error(url));
+          el.src = url;
+        });
+        break;
+      } catch {
+        img = null;
+      }
+    }
+    if (!img || this.disposed) return;
+
+    const tex = new THREE.Texture(img);
+    tex.needsUpdate = true;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      side: THREE.BackSide,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1980, 64, 40), mat);
+    dome.renderOrder = -9;
+    this.scene.add(dome);
+    this.panoMat = mat;
+
+    /* calibração por análise de pixels (só se o CORS permitir leitura) */
+    try {
+      const W = 160;
+      const H = 80;
+      const cv = document.createElement("canvas");
+      cv.width = W;
+      cv.height = H;
+      const g = cv.getContext("2d", { willReadFrequently: true });
+      if (!g) return;
+      g.drawImage(img, 0, 0, W, H);
+      const px = g.getImageData(0, 0, W, H).data;
+
+      /* Sol: centróide ponderado pelo cubo da luminância (região superior) */
+      let sumW = 0;
+      let cx = 0;
+      let cy = 0;
+      let peak = 0;
+      for (let y = 0; y < H * 0.62; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          const lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          if (lum > peak) peak = lum;
+          const w = Math.pow(lum / 255, 6);
+          sumW += w;
+          cx += x * w;
+          cy += y * w;
+        }
+      }
+      if (peak > 235 && sumW > 1e-4) {
+        const u = cx / sumW / W;
+        const v = cy / sumW / H;
+        /* UV da esfera three: az = u·2π − π/2, el = (0,5 − v)·π */
+        const az = u * Math.PI * 2 - Math.PI / 2;
+        const el = (0.5 - v) * Math.PI;
+        const dirImg = new THREE.Vector3(
+          Math.cos(el) * Math.sin(az),
+          Math.sin(el),
+          Math.cos(el) * Math.cos(az)
+        ).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(dirImg, this.sunDirRef.clone().normalize());
+        dome.quaternion.copy(q);
+      }
+
+      /* névoa adaptativa: cor média da faixa do horizonte */
+      let rr = 0;
+      let gg = 0;
+      let bb = 0;
+      let n = 0;
+      for (let y = Math.floor(H * 0.46); y < Math.floor(H * 0.56); y++) {
+        for (let x = 0; x < W; x += 2) {
+          const i = (y * W + x) * 4;
+          rr += px[i];
+          gg += px[i + 1];
+          bb += px[i + 2];
+          n++;
+        }
+      }
+      if (n > 0 && this.fogUniform) {
+        /* mistura 70% foto / 30% névoa original p/ manter o contraste do terreno */
+        const fc = this.fogUniform.value as THREE.Color;
+        const photo = new THREE.Color(rr / n / 255, gg / n / 255, bb / n / 255);
+        fc.copy(fc.lerp(photo, 0.7));
+      }
+
+      /* o Sol da foto assume: esconde o Sol/glare procedurais */
+      for (const s of this.sunSprites) s.visible = false;
+    } catch {
+      /* CORS bloqueado → cúpula sem calibração (ainda assim melhor que nada) */
+    }
+
+    this.panoActive = true;
   }
 
   /* -------------------------------------------------- eventos */
@@ -559,14 +689,14 @@ export class SurfaceScene {
 
     for (const u of this.timeUniforms) u.value = this.wallTime;
 
-    /* caminhada */
+    /* caminhada (vetores reutilizados — zero alocação por frame) */
     this.moving = false;
     if (this.canWalk) {
       const g = Math.max(0.5, this.def.gravityMs2);
       const baseSpeed = 5.5 * THREE.MathUtils.clamp(Math.sqrt(9.81 / g), 0.45, 3.2);
       const speed = (this.keys.has("shift") ? baseSpeed * 2.3 : baseSpeed) * dt;
-      const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-      const right = new THREE.Vector3(fwd.z, 0, -fwd.x);
+      const fwd = this.fwdTmp.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+      const right = this.rightTmp.set(fwd.z, 0, -fwd.x);
       let dx = 0;
       let dz = 0;
       if (this.keys.has("w") || this.keys.has("arrowup")) { dx += fwd.x * speed; dz += fwd.z * speed; }
@@ -591,17 +721,23 @@ export class SurfaceScene {
     }
 
     this.camera.position.set(this.walkX, this.camY, this.walkZ);
-    const lookDir = new THREE.Vector3(
-      -Math.sin(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.pitch),
-      -Math.cos(this.yaw) * Math.cos(this.pitch)
+    this.lookTmp.set(
+      this.walkX - Math.sin(this.yaw) * Math.cos(this.pitch),
+      this.camY + Math.sin(this.pitch),
+      this.walkZ - Math.cos(this.yaw) * Math.cos(this.pitch)
     );
-    this.camera.lookAt(this.camera.position.clone().add(lookDir));
+    this.camera.lookAt(this.lookTmp);
 
-    /* poeira */
-    this.scene.traverse((o) => {
-      if (o.userData.spin) o.rotation.y += dt * 0.045;
-    });
+    /* poeira em deriva lenta */
+    if (this.dustRef) {
+      this.dustRef.rotation.y += dt * 0.045;
+      this.dustRef.position.y = Math.sin(this.wallTime * 0.3) * 0.4;
+    }
+
+    /* fade-in do panorama 360° */
+    if (this.panoMat && this.panoMat.opacity < 1) {
+      this.panoMat.opacity = Math.min(1, this.panoMat.opacity + dt * 0.7);
+    }
 
     /* FPS */
     this.frames++;
@@ -625,7 +761,7 @@ export class SurfaceScene {
         posZ: this.walkZ,
         canWalk: this.canWalk,
         moving: this.moving,
-        panoActive: false,
+        panoActive: this.panoActive,
       });
     }
 
@@ -647,8 +783,14 @@ export class SurfaceScene {
       const any = o as THREE.Mesh;
       if (any.geometry) any.geometry.dispose();
       const m = any.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
-      else if (m) m.dispose();
+      const kill = (mm: THREE.Material) => {
+        /* texturas de sprite/mapa não são liberadas pelo material.dispose() */
+        const withMap = mm as THREE.Material & { map?: THREE.Texture | null };
+        if (withMap.map) withMap.map.dispose();
+        mm.dispose();
+      };
+      if (Array.isArray(m)) m.forEach(kill);
+      else if (m) kill(m);
     });
     this.renderer.dispose();
     el.remove();

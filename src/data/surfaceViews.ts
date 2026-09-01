@@ -13,6 +13,8 @@ export interface SkyBodyDef {
 export interface SurfaceViewDef {
   bodyId: string;
   viewLabel: string;
+  /** cúpula equiretangular 360° (opcional) — URLs em ordem de prioridade */
+  panorama?: { urls: string[] };
   skyTop: string;
   skyHorizon: string;
   sunAngularDeg: number;
@@ -215,7 +217,13 @@ export const SURFACE_VIEWS: Record<string, SurfaceViewDef> = {
 
   mars: view({
     bodyId: "mars",
-    viewLabel: "Planície rochosa com dunas",
+    viewLabel: "Panorama 360° fotorreal + terreno procedural",
+    panorama: {
+      urls: [
+        "panos/mars.jpg",
+        "https://image.qwenlm.ai/generated-images/d91318a7-f59b-4879-8108-2652cee59b5d/_result.png",
+      ],
+    },
     skyTop: "#4c3322",
     skyHorizon: "#cf9a66",
     sunAngularDeg: 0.35,

@@ -19,6 +19,53 @@ import {
   STAR_FRAG,
   NEBULA_FRAG,
 } from "./shaders";
+import { BODY_TEXTURES, loadTextureQueue } from "./textures";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+
+/** placeholder 1×1 para samplers antes da chegada da textura fotográfica */
+const WHITE_TEX = (() => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 4;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#808080";
+  g.fillRect(0, 0, 4, 4);
+  return new THREE.CanvasTexture(c);
+})();
+
+/** grão de filme + vinheta (pós-produção leve, 1 passe fullscreen) */
+const FilmShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uVignette: { value: 0.32 },
+    uGrain: { value: 0.042 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform float uVignette;
+    uniform float uGrain;
+    varying vec2 vUv;
+    float hash21(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 q = vUv - 0.5;
+      c.rgb *= clamp(1.0 - uVignette * dot(q, q) * 1.6, 0.0, 1.0);
+      float g = hash21(vUv * vec2(1917.0, 1013.0) + fract(uTime) * 61.7) - 0.5;
+      c.rgb += g * uGrain;
+      gl_FragColor = c;
+    }
+  `,
+};
 
 /** Períodos de rotação (dias) — negativo = retrógrada */
 const ROT_DAYS: Record<string, number> = {
@@ -81,6 +128,7 @@ export interface SolarSystemOptions {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onHud: (h: HudData) => void;
+  onTexProgress?: (done: number, total: number) => void;
 }
 
 interface BodyRT {
@@ -128,6 +176,10 @@ export function surfaceUniforms(src: { surface: BodyDef["surface"] }) {
     uAtmosColor: { value: new THREE.Color(s.atmosColor) },
     uAtmosAmp: { value: THREE.MathUtils.clamp(s.atmosAmp, 0, 2) },
     uSunPos: { value: new THREE.Vector3(0, 0, 0) },
+    /* textura fotográfica (chega via fila assíncrona; crossfade por uMapMix) */
+    uMap: { value: WHITE_TEX },
+    uMapMix: { value: 0 },
+    uDetail: { value: s.earthLike ? 0.15 : s.craterAmp > 0.2 ? 0.5 : 0.35 },
   };
   if (s.spot) {
     const lat = THREE.MathUtils.degToRad(s.spot.latDeg);
@@ -188,6 +240,16 @@ export class SolarSystem {
   private windMat!: THREE.ShaderMaterial;
   private beltInner!: THREE.Group;
   private beltOuter!: THREE.Group;
+  private filmPass!: ShaderPass;
+
+  /* registros p/ aplicação das texturas fotográficas */
+  private bodyMats = new Map<string, THREE.ShaderMaterial>();
+  private ringMats = new Map<string, THREE.ShaderMaterial>();
+  private sunMat: THREE.ShaderMaterial | null = null;
+  private earthCloudMat: THREE.ShaderMaterial | null = null;
+  private venusAtmoMat: THREE.ShaderMaterial | null = null;
+  private fades: { mat: THREE.ShaderMaterial; uniform: string; t: number }[] = [];
+  private selectedId: string | null = null;
 
   /* LOD: esferas unitárias compartilhadas (1 por tier) — todas as malhas
      usam scale, evitando dezenas de geometrias grandes na VRAM. */
@@ -234,8 +296,78 @@ export class SolarSystem {
     this.initGL();
     this.buildScene();
     this.bindEvents();
+    this.startTextures();
     this.clock.start();
     this.loop();
+  }
+
+  /** baixa as texturas fotográficas (Solar System Scope) e aplica com crossfade */
+  private startTextures() {
+    const jobs: { bodyId: string; job: (typeof BODY_TEXTURES)[string][number] }[] = [];
+    for (const [bodyId, list] of Object.entries(BODY_TEXTURES)) {
+      for (const job of list) jobs.push({ bodyId, job });
+    }
+    const aniso = this.renderer.capabilities.getMaxAnisotropy();
+    void loadTextureQueue(jobs, aniso, (done, total) => {
+      this.opts.onTexProgress?.(done, total);
+    }).then((results) => {
+      if (this.disposed) return;
+      const fade = (m: THREE.ShaderMaterial, uniform: string) =>
+        this.fades.push({ mat: m, uniform, t: 0 });
+
+      for (const r of results) {
+        if (!r.tex) continue;
+        if (r.key === "map") {
+          const m = this.bodyMats.get(r.bodyId);
+          if (m) {
+            m.uniforms.uMap.value = r.tex;
+            fade(m, "uMapMix");
+          }
+        } else if (r.key === "sun" && this.sunMat) {
+          this.sunMat.uniforms.uMap.value = r.tex;
+          fade(this.sunMat, "uMapMix");
+        } else if (r.key === "clouds" && this.earthCloudMat) {
+          this.earthCloudMat.uniforms.uCloudMap.value = r.tex;
+          this.earthCloudMat.uniforms.uCloudUseMap.value = 1;
+        } else if (r.key === "atmo" && this.venusAtmoMat) {
+          this.venusAtmoMat.uniforms.uCloudMap.value = r.tex;
+          this.venusAtmoMat.uniforms.uCloudUseMap.value = 1;
+        } else if (r.key === "ring") {
+          const m = this.ringMats.get(r.bodyId);
+          if (m) {
+            m.uniforms.uRingMap.value = r.tex;
+            m.uniforms.uRingUseMap.value = 1;
+          }
+        } else if (r.key === "stars") {
+          this.addMilkyWay(r.tex);
+        }
+      }
+    });
+  }
+
+  /** casca aditiva com a Via Láctea fotográfica ao fundo */
+  private addMilkyWay(tex: THREE.Texture) {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: tex } },
+      vertexShader: SURFACE_VERT,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uMap;
+        varying vec2 vUv;
+        void main() {
+          vec3 c = texture2D(uMap, vUv).rgb;
+          gl_FragColor = vec4(c * 0.5, 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+    });
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(1560, 48, 32), mat);
+    shell.rotation.z = THREE.MathUtils.degToRad(62);
+    shell.rotation.y = THREE.MathUtils.degToRad(20);
+    shell.renderOrder = -9;
+    this.scene.add(shell);
   }
 
   /* ---------------------------------------------------------- setup */
@@ -273,8 +405,11 @@ export class SolarSystem {
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.setPixelRatio(this.dpr);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.72, 0.55, 1.0);
+    /* bloom em meia resolução: idêntico visualmente para halos, ~4× mais barato */
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(Math.ceil(w / 2), Math.ceil(h / 2)), 0.72, 0.55, 1.0);
     this.composer.addPass(this.bloom);
+    this.filmPass = new ShaderPass(FilmShader);
+    this.composer.addPass(this.filmPass);
     this.composer.addPass(new OutputPass());
   }
 
@@ -405,12 +540,17 @@ export class SolarSystem {
     const sunMat = new THREE.ShaderMaterial({
       vertexShader: SURFACE_VERT,
       fragmentShader: SUN_FRAG,
-      uniforms: { uTime: { value: 0 } },
+      uniforms: {
+        uTime: { value: 0 },
+        uMap: { value: WHITE_TEX },
+        uMapMix: { value: 0 },
+      },
     });
     const sunMesh = new THREE.Mesh(this.sphereHi, sunMat);
     sunMesh.scale.setScalar(SUN.sizeR);
     this.scene.add(sunMesh);
     this.sunMats.push(sunMat);
+    this.sunMat = sunMat;
     this.pickables.push(sunMesh);
 
     const coronaMat = new THREE.ShaderMaterial({
@@ -559,6 +699,7 @@ export class SolarSystem {
       uniforms,
     });
     this.surfaceMats.push(mat);
+    this.bodyMats.set(def.id, mat);
     const geo = def.sizeR > 2 ? this.sphereHi : this.sphereMd;
     const mesh = new THREE.Mesh(geo, mat);
     mesh.scale.setScalar(Math.max(0.05, def.sizeR));
@@ -573,6 +714,8 @@ export class SolarSystem {
           uTime: uniforms.uTime,
           uCloudAmp: { value: 0.85 },
           uSunPos: uniforms.uSunPos,
+          uCloudMap: { value: WHITE_TEX },
+          uCloudUseMap: { value: 0 },
         },
         transparent: true,
         depthWrite: false,
@@ -582,6 +725,30 @@ export class SolarSystem {
       clouds.renderOrder = 1;
       tiltGroup.add(clouds);
       this.surfaceMats.push(cloudMat);
+      this.earthCloudMat = cloudMat;
+    }
+
+    /* casca de nuvens sulfúricas de Vênus (recebe o mapa de atmosfera 8K) */
+    if (def.id === "venus") {
+      const vMat = new THREE.ShaderMaterial({
+        vertexShader: SURFACE_VERT,
+        fragmentShader: CLOUD_FRAG,
+        uniforms: {
+          uTime: uniforms.uTime,
+          uCloudAmp: { value: 1.0 },
+          uSunPos: uniforms.uSunPos,
+          uCloudMap: { value: WHITE_TEX },
+          uCloudUseMap: { value: 0 },
+        },
+        transparent: true,
+        depthWrite: false,
+      });
+      const shell = new THREE.Mesh(geo, vMat);
+      shell.scale.setScalar(Math.max(0.05, def.sizeR * 1.045));
+      shell.renderOrder = 1;
+      tiltGroup.add(shell);
+      this.surfaceMats.push(vMat);
+      this.venusAtmoMat = vMat;
     }
 
     if (def.surface.atmosAmp > 0.4) {
@@ -617,6 +784,8 @@ export class SolarSystem {
           uTint: { value: new THREE.Color(def.ring.tint) },
           uOpacity: { value: THREE.MathUtils.clamp(def.ring.opacity, 0, 1) },
           uSunPos: uniforms.uSunPos,
+          uRingMap: { value: WHITE_TEX },
+          uRingUseMap: { value: 0 },
         },
         transparent: true,
         side: THREE.DoubleSide,
@@ -625,6 +794,7 @@ export class SolarSystem {
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.renderOrder = 4;
       tiltGroup.add(ring);
+      this.ringMats.set(def.id, ringMat);
     }
 
     const theta0 = idx * 0.83 + 0.4;
@@ -660,6 +830,7 @@ export class SolarSystem {
         uniforms: mUniforms,
       });
       this.surfaceMats.push(mMat);
+      this.bodyMats.set(m.id, mMat);
       const mMesh = new THREE.Mesh(this.sphereLo, mMat);
       mMesh.scale.setScalar(Math.max(0.04, m.sizeR));
       mAnchor.add(mMesh);
@@ -773,6 +944,7 @@ export class SolarSystem {
   /* ---------------------------------------------------------- API pública */
 
   select(id: string | null) {
+    this.selectedId = id;
     for (const b of this.bodies.values()) {
       b.labelEl.classList.toggle("is-selected", b.id === id);
       if (b.orbitMat) {
@@ -900,6 +1072,17 @@ export class SolarSystem {
     for (const m of this.sunMats) m.uniforms.uTime.value = this.wallTime;
     this.starMat.uniforms.uTime.value = this.wallTime;
     this.windMat.uniforms.uTime.value = this.wallTime;
+    if (this.filmPass) this.filmPass.uniforms.uTime.value = this.wallTime;
+
+    /* crossfade procedural → fotográfico (suavizado em ~1,8 s) */
+    if (this.fades.length > 0) {
+      this.fades = this.fades.filter((f) => {
+        f.t = Math.min(1, f.t + dt / 1.8);
+        const s = f.t * f.t * (3 - 2 * f.t);
+        if (f.mat.uniforms[f.uniform]) f.mat.uniforms[f.uniform].value = s;
+        return f.t < 1;
+      });
+    }
     /* rotação diferencial kepleriana: ω ∝ r^(−3/2) */
     this.beltInner.rotation.y = (this.simDays / 1450) * Math.PI * 2;
     this.beltOuter.rotation.y = (this.simDays / 1760) * Math.PI * 2;
@@ -970,13 +1153,14 @@ export class SolarSystem {
       let visible = this.showLabels;
       if (b.isMoon && visible) {
         const parent = b.parentId ? this.bodies.get(b.parentId) : null;
-        const parentActive = b.parentId === this.hoveredId;
+        const parentActive =
+          b.parentId === this.hoveredId || b.parentId === this.selectedId;
         let near = false;
         if (parent) {
           parent.mesh.getWorldPosition(V1);
           near = this.camera.position.distanceTo(V1) < 16;
         }
-        visible = parentActive || near;
+        visible = parentActive || near || b.id === this.selectedId;
       }
       if (!visible) {
         el.classList.add("is-hidden");
