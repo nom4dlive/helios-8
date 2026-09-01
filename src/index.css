@@ -1,1 +1,189 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Unbounded", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --color-void: #04060c;
+  --color-panel: #0a0f1a;
+  --color-ink: #e8ecf4;
+  --color-dim: #8b93a7;
+  --color-solar: #f5b342;
+  --color-solar-hot: #ffce6b;
+  --color-line: rgba(255, 255, 255, 0.09);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+/* ---------- rótulos orbitais (DOM sobre o canvas) ---------- */
+.orbit-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 236, 244, 0.72);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  transition: color 160ms ease, opacity 240ms ease;
+  will-change: transform;
+  user-select: none;
+}
+.orbit-label .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px currentColor;
+  transition: transform 160ms ease;
+}
+.orbit-label:hover,
+.orbit-label.is-hovered {
+  color: var(--color-solar-hot);
+}
+.orbit-label:hover .dot,
+.orbit-label.is-hovered .dot {
+  transform: scale(1.6);
+}
+.orbit-label.is-selected {
+  color: var(--color-solar);
+  font-weight: 600;
+}
+.orbit-label.is-moon {
+  font-size: 9px;
+  opacity: 0.85;
+}
+.orbit-label.is-static {
+  pointer-events: none;
+  cursor: default;
+}
+.orbit-label.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- chips de telemetria ---------- */
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(4, 6, 12, 0.72);
+  backdrop-filter: blur(6px);
+  padding: 3px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(139, 147, 167, 0.9);
+}
+.stat strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- slider de velocidade ---------- */
+input[type="range"].slider-solar {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(245, 179, 66, 0.9), rgba(245, 179, 66, 0.25));
+  outline: none;
+}
+input[type="range"].slider-solar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-solar-hot);
+  border: 2px solid #04060c;
+  box-shadow: 0 0 10px rgba(245, 179, 66, 0.8);
+  cursor: pointer;
+}
+input[type="range"].slider-solar::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-solar-hot);
+  border: 2px solid #04060c;
+  cursor: pointer;
+}
+
+/* ---------- animações ---------- */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.panel-in {
+  animation: panelIn 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes slowSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slow {
+  animation: slowSpin 40s linear infinite;
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.pulse-dot {
+  animation: pulseDot 1.6s ease-in-out infinite;
+}
+
+/* ---------- scrollbars ---------- */
+.scroll-slim::-webkit-scrollbar {
+  width: 5px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgba(245, 179, 66, 0.28);
+  border-radius: 3px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
