@@ -1,1 +1,167 @@
 @import "tailwindcss";
+
+@theme {
+  --color-void: #030510;
+  --color-panel: #0a0f1e;
+  --color-panel2: #0d1428;
+  --color-ink: #e8ecf4;
+  --color-dim: #8b93a7;
+  --color-solar: #f5b342;
+  --color-solar-hot: #ffd27a;
+  --color-bio: #5fd08a;
+  --color-ice: #7fd4ff;
+  --color-line: rgba(255, 255, 255, 0.09);
+  --font-display: "Unbounded", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
+
+/* ---------- rótulos 3D ---------- */
+.orbit-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 236, 244, 0.78);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+  will-change: transform;
+  user-select: none;
+}
+.orbit-label .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px currentColor;
+}
+.orbit-label.is-hidden {
+  opacity: 0 !important;
+  visibility: hidden;
+}
+
+/* ---------- sliders ---------- */
+input[type="range"].rng {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(245, 179, 66, 0.9), rgba(245, 179, 66, 0.2));
+  outline: none;
+}
+input[type="range"].rng::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-solar-hot);
+  border: 2px solid #030510;
+  box-shadow: 0 0 10px rgba(245, 179, 66, 0.8);
+  cursor: pointer;
+}
+input[type="range"].rng::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-solar-hot);
+  border: 2px solid #030510;
+  cursor: pointer;
+}
+
+/* ---------- chips de telemetria ---------- */
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(3, 5, 16, 0.72);
+  backdrop-filter: blur(6px);
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(139, 147, 167, 0.9);
+}
+.stat strong {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- balão do alien ---------- */
+.alien-bubble {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  border-radius: 2px;
+  position: relative;
+}
+.alien-bubble::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-top: 2px solid rgba(127, 232, 222, 0.35);
+}
+
+/* ---------- animações ---------- */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: riseIn 320ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+/* ---------- scroll ---------- */
+.scroll-slim::-webkit-scrollbar {
+  width: 5px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
