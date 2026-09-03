@@ -563,7 +563,7 @@ export default function App() {
 
       {mode === "solar" && <SolarMode {...sim} />}
       {mode === "exo" && <ExoMode {...sim} />}
-      {mode === "compare" && <ComparePanel />}
+      {mode === "compare" && <ComparePanel onClose={() => setMode("solar")} />}
     </div>
   );
 }

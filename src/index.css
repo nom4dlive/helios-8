@@ -60,6 +60,22 @@ canvas {
   opacity: 0 !important;
   visibility: hidden;
 }
+.orbit-label.is-hovered {
+  color: var(--color-solar-hot);
+}
+/* rótulo do comparador — maior e com fundo p/ legibilidade sobre o palco */
+.orbit-label.cmp-label {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  padding: 3px 10px 3px 8px;
+  background: rgba(6, 9, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+}
+.orbit-label.cmp-label .dot {
+  width: 6px;
+  height: 6px;
+}
 
 /* ---------- sliders ---------- */
 input[type="range"].rng {
@@ -170,6 +186,58 @@ input[type="range"].rng::-moz-range-thumb {
   box-shadow: inset 0 0 24px rgba(245, 179, 66, 0.07);
   transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
+}
+
+/* ---------- segmented (toggle de escala / tabs) ---------- */
+.segmented {
+  position: relative;
+  display: inline-flex;
+  border: 1px solid var(--color-line);
+  background: rgba(10, 15, 30, 0.85);
+  overflow: hidden;
+}
+.segmented button {
+  position: relative;
+  z-index: 1;
+  padding: 6px 13px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-dim);
+  cursor: pointer;
+  transition: color 0.16s ease;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+}
+.segmented button.active {
+  color: var(--color-solar-hot);
+}
+.segmented .seg-ind {
+  width: 50%;
+}
+
+/* ---------- chip (presets) ---------- */
+.chip {
+  border: 1px solid var(--color-line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-dim);
+  padding: 5px 11px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.1s ease;
+}
+.chip:hover {
+  color: var(--color-solar-hot);
+  border-color: rgba(245, 179, 66, 0.5);
+  box-shadow: 0 0 14px rgba(245, 179, 66, 0.1);
+}
+.chip:active {
+  transform: scale(0.95);
 }
 
 /* ---------- botões ---------- */

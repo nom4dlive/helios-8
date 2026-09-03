@@ -8,7 +8,7 @@ Simulação 3D interativa (React + Three.js + Tailwind v4) com três modos integ
 |---|---|
 | **Sistema Solar** | Sol + 8 planetas + 15 luas em órbitas keplerianas reais (excentricidade, periélio, inclinação axial), anéis de Saturno/Urano, cinturão de asteroides, rótulos flutuantes e foco de câmera em qualquer corpo. |
 | **Exoplanetas** | 22 sistemas reais / 60 mundos: TRAPPIST-1, Proxima, TOI-700, Teegarden, Kepler-186/452/22, KELT-9 b, HR 8799, planetas de pulsar… com zona habitável de Kopparapu, ESI, metalicidade e método/ano de descoberta. |
-| **Comparar** | Painel dedicado: selecione até 3 estrelas, planetas ou luas (de qualquer sistema, incluindo o Solar) e compare com barras animadas, deltas percentuais e escala logarítmica nas faixas extremas. |
+| **Comparar** | **Observatório de Comparação 3D**: até 3 estrelas, planetas ou luas (de qualquer sistema, inclusive o Solar) renderizados **lado a lado em pedestais holográficos giratórios com os mesmos shaders de alto realismo** das cenas principais. Alterne entre *proporção real* e *tamanhos iguais*, use presets rápidos, régua de raio em escala log e um seletor de corpos por categoria. |
 
 ## 🕹 Controles
 
@@ -40,14 +40,16 @@ src/
 ├── data/
 │   ├── catalog.ts           22 sistemas exoplanetários + helpers (Kepler, Kopparapu, ESI)
 │   ├── solarSystem.ts       Sol, 8 planetas, 15 luas + perfis de visita
-│   └── compare.ts           listas unificadas do comparador
+│   ├── compare.ts           listas unificadas do comparador
+│   └── bodySpecs.ts         resolve qualquer corpo → spec 3D p/ os shaders realistas
 ├── three/
 │   ├── shaders.ts           biblioteca GLSL (ruído, superfícies, céu, terreno, anéis)
 │   ├── SolarScene.ts        cena orbital do Sistema Solar (bloom, kepler, luas)
 │   ├── ExoScene.ts          cena de sistemas exoplanetários (12 classes de mundo)
+│   ├── CompareScene.ts      palco 3D do comparador (pedestais giratórios)
 │   └── SurfaceScene.ts      visita em 1ª pessoa (terreno assado na CPU, colisão)
 ├── components/
-│   ├── ComparePanel.tsx     comparador com barras animadas e deltas
+│   ├── ComparePanel.tsx     observatório de comparação (slots, presets, picker)
 │   ├── SolarDetailPanel.tsx painel de dados do Sistema Solar
 │   ├── SurfaceVisit.tsx     overlay da visita (telemetria, diário)
 │   └── AlienTeacher.tsx     Prof. Zyx — curiosidades TDAH-friendly

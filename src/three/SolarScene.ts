@@ -687,7 +687,8 @@ export class SolarScene {
     this.controls.dispose();
     this.scene.traverse((o) => {
       const mm = o as THREE.Mesh;
-      if (mm.geometry) mm.geometry.dispose();
+      /* preserva as geometrias compartilhadas de módulo */
+      if (mm.geometry && mm.geometry !== SPHERE && mm.geometry !== SPHERE_LO) mm.geometry.dispose();
       const mat = mm.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
       else if (mat) mat.dispose();

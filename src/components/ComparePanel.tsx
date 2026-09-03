@@ -1,339 +1,373 @@
-import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { CMP_STARS, CMP_PLANETS, CMP_MOONS, type CmpStar, type CmpPlanet, type CmpMoon } from "../data/compare";
-import { fmtNum } from "../data/catalog";
+/**
+ * OBSERVATÓRIO DE COMPARAÇÃO — painel 100% visual e interativo.
+ * Renderiza os corpos lado a lado em pedestais 3D holográficos (mesmos shaders
+ * de alto realismo) e oferece slots comparativos com réguas de escala,
+ * presets rápidos e um seletor de estrelas/planetas/luas.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CompareScene } from "../three/CompareScene";
+import { bodySpecFor } from "../data/bodySpecs";
+import { CMP_STARS, CMP_PLANETS, CMP_MOONS } from "../data/compare";
+import { fmtNum, fmtInt } from "../data/catalog";
 import { sfx } from "../lib/sound";
 
 type Tab = "stars" | "planets" | "moons";
-type ScaleMode = "linear" | "sqrt" | "log";
 
-const SLOT_COLORS = ["#f5b342", "#5fd08a", "#7fb8ff"];
-const MAX_SLOTS = 3;
-
-interface Metric<T> {
-  label: string;
-  note?: string;
-  get: (t: T) => number | null;
-  scale: ScaleMode;
-  fmt: (v: number) => string;
-  noBar?: boolean;
-  zeroLabel?: string;
+interface PickerItem {
+  id: string;
+  name: string;
+  sub: string;
+  color: string;
 }
 
-const scaleVal = (v: number, mode: ScaleMode) =>
-  mode === "log" ? Math.log10(Math.max(v, 1e-6)) : mode === "sqrt" ? Math.sqrt(Math.max(v, 0)) : v;
+const SLOT_COLORS = ["#f5b342", "#7fd4ff", "#5fd08a"];
 
-function delta(v: number, base: number): string {
-  if (base <= 0 || v <= 0) return "—";
-  const r = v / base;
-  if (r >= 10) return `${fmtNum(r, r >= 100 ? 0 : 1)}×`;
-  if (r >= 1) return `+${fmtNum((r - 1) * 100, 0)}%`;
-  return `−${fmtNum((1 - r) * 100, 0)}%`;
+const PRESETS: { label: string; ids: (string | null)[] }[] = [
+  { label: "TERRA × MARTE", ids: ["earth", "mars", null] },
+  { label: "TERRA × TRAPPIST-1E", ids: ["earth", "trappist-trappist-e", null] },
+  { label: "SOL × ANÃ VERMELHA", ids: ["star-solar", "star-trappist", null] },
+  { label: "GIGANTES", ids: ["jupiter", "saturn", "neptune"] },
+  { label: "LUAS DE OCEANO", ids: ["europa", "enceladus", "titan"] },
+];
+
+function radiusKmOf(id: string | null): number | null {
+  if (!id) return null;
+  return bodySpecFor(id)?.radiusKm ?? null;
 }
 
-/* ------------------------------------------------------------ métricas */
+function statsOf(id: string | null): { label: string; value: string }[] {
+  if (!id) return [];
+  const spec = bodySpecFor(id);
+  if (!spec) return [];
+  if (spec.kind === "star") {
+    const s = CMP_STARS.find((x) => x.id === id);
+    return [
+      { label: "TIPO", value: s?.type ?? "—" },
+      { label: "TEMPERATURA", value: `${fmtInt(s?.tempK ?? spec.star?.tempK ?? 0)} K` },
+      { label: "MASSA", value: `${fmtNum(s?.massSun ?? 0, 2)} M☉` },
+      { label: "LUMINOSIDADE", value: `${fmtNum(s?.lumSun ?? 0, s?.lumSun != null && s.lumSun < 0.01 ? 4 : 2)} L☉` },
+    ];
+  }
+  if (spec.kind === "moon") {
+    const m = CMP_MOONS.find((x) => x.id === id);
+    return [
+      { label: "PLANETA", value: m?.planetName ?? "—" },
+      { label: "RAIO", value: `${fmtInt(spec.radiusKm)} km` },
+      { label: "ÓRBITA", value: `${fmtInt((m?.orbitKm ?? 0) / 1000)} mil km` },
+      { label: "PERÍODO", value: `${fmtNum(m?.periodDays ?? 0, 2)} d` },
+    ];
+  }
+  const p = CMP_PLANETS.find((x) => x.id === id);
+  return [
+    { label: "RAIO", value: `${fmtNum(spec.radiusKm / 6371, 2)} R⊕` },
+    { label: "MASSA", value: p?.massEarth != null ? `${fmtNum(p.massEarth, 2)} M⊕` : "—" },
+    { label: "PERÍODO", value: `${fmtNum(p?.periodDays ?? 0, p?.periodDays != null && p.periodDays < 10 ? 2 : 0)} d` },
+    { label: "DISTÂNCIA", value: `${fmtNum(p?.distAU ?? 0, 2)} UA` },
+  ];
+}
 
-const STAR_METRICS: Metric<CmpStar>[] = [
-  { label: "Temperatura", note: "define a cor da estrela", get: (s) => s.tempK, scale: "linear", fmt: (v) => `${fmtNum(v, 0)} K` },
-  { label: "Massa", get: (s) => s.massSun, scale: "log", fmt: (v) => `${fmtNum(v, 2)} M☉` },
-  { label: "Raio", get: (s) => s.radiusSun, scale: "log", fmt: (v) => `${fmtNum(v, 2)} R☉` },
-  { label: "Luminosidade", get: (s) => s.lumSun, scale: "log", fmt: (v) => `${fmtNum(v, v < 0.01 ? 4 : 2)} L☉` },
-  { label: "Metalicidade", note: "[Fe/H] — berços de planetas rochosos", get: (s) => s.metallicity ?? null, scale: "linear", fmt: (v) => `${v > 0 ? "+" : ""}${fmtNum(v, 2)}`, noBar: true },
-  { label: "Planetas conhecidos", get: (s) => s.planetCount, scale: "linear", fmt: (v) => `${fmtNum(v, 0)}` },
-  { label: "Distância da Terra", get: (s) => s.distLy, scale: "log", fmt: (v) => `${fmtNum(v, v < 20 ? 2 : 0)} al`, zeroLabel: "você está aqui" },
-];
+function kindLabel(id: string | null): string {
+  if (!id) return "";
+  const s = bodySpecFor(id);
+  if (!s) return "";
+  return s.kind === "star" ? "ESTRELA" : s.kind === "moon" ? "LUA" : "PLANETA";
+}
 
-const PLANET_METRICS: Metric<CmpPlanet>[] = [
-  { label: "Raio", get: (p) => p.radiusEarth, scale: "sqrt", fmt: (v) => `${fmtNum(v, 2)} R⊕` },
-  { label: "Massa", get: (p) => p.massEarth ?? null, scale: "log", fmt: (v) => `${fmtNum(v, 2)} M⊕` },
-  { label: "Período orbital", note: "duração do ano local", get: (p) => p.periodDays, scale: "log", fmt: (v) => `${fmtNum(v, v < 10 ? 2 : 0)} dias` },
-  { label: "Distância à estrela", get: (p) => p.distAU, scale: "log", fmt: (v) => `${fmtNum(v, 3)} UA` },
-  { label: "Insolação", note: "Terra = 1,00 S⊕", get: (p) => p.flux ?? null, scale: "log", fmt: (v) => `${fmtNum(v, 2)} S⊕` },
-  { label: "Temp. de equilíbrio", get: (p) => p.teqK ?? null, scale: "linear", fmt: (v) => `${fmtNum(v, 0)} K · ${fmtNum(v - 273.15, 0)} °C` },
-  { label: "ESI", note: "Índice de Semelhança com a Terra (Terra = 1,00)", get: (p) => p.esiVal ?? null, scale: "linear", fmt: (v) => fmtNum(v, 2) },
-];
+export default function ComparePanel({ onClose }: { onClose: () => void }) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const labelsRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<CompareScene | null>(null);
 
-const MOON_METRICS: Metric<CmpMoon>[] = [
-  { label: "Raio", get: (m) => m.radiusKm, scale: "sqrt", fmt: (v) => `${fmtNum(v, 0)} km` },
-  { label: "Distância do planeta", get: (m) => m.orbitKm, scale: "log", fmt: (v) => `${fmtNum(v, 0)} km` },
-  { label: "Período orbital", get: (m) => m.periodDays, scale: "log", fmt: (v) => `${fmtNum(v, v < 10 ? 2 : 1)} dias` },
-];
+  const [slots, setSlots] = useState<(string | null)[]>(["earth", "trappist-trappist-e", null]);
+  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>("planets");
+  const [query, setQuery] = useState("");
+  const [relative, setRelative] = useState(true);
+  const [hovered, setHovered] = useState<string | null>(null);
 
-/* ------------------------------------------------------------ presets */
+  /* cena 3D */
+  useEffect(() => {
+    if (!mountRef.current || !labelsRef.current) return;
+    const scene = new CompareScene(mountRef.current, labelsRef.current, {
+      onHover: setHovered,
+      onSelect: (id) => {
+        /* clicar num corpo abre o picker no slot correspondente */
+        const idx = slots.indexOf(id);
+        setPickerSlot(idx >= 0 ? idx : 0);
+        sfx.select();
+      },
+    });
+    sceneRef.current = scene;
+    return () => {
+      scene.dispose();
+      sceneRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-/* matching tolerante: ignora espaços e hífens ("TRAPPIST-1 e" ≡ "TRAPPIST-1e") */
-const norm = (s: string) => s.toLowerCase().replace(/[\s-]/g, "");
-const byStar = (n: string) => CMP_STARS.find((s) => norm(s.name).includes(norm(n)))?.id;
-const byPlanet = (n: string) => CMP_PLANETS.find((p) => norm(p.name).includes(norm(n)))?.id;
-const byMoon = (n: string) => CMP_MOONS.find((m) => norm(m.name).includes(norm(n)))?.id;
+  useEffect(() => {
+    sceneRef.current?.setBodies(slots);
+  }, [slots]);
 
-const PRESETS: Record<Tab, { label: string; ids: (string | undefined)[] }[]> = {
-  stars: [
-    { label: "Sol × anã vermelha", ids: [byStar("Sol"), byStar("TRAPPIST")] },
-    { label: "Sol × gêmea solar", ids: [byStar("Sol"), byStar("Kepler-452")] },
-    { label: "Vizinhas da Terra", ids: [byStar("Proxima"), byStar("TRAPPIST"), byStar("Teegarden")] },
-  ],
-  planets: [
-    { label: "Terra × TRAPPIST-1e", ids: [byPlanet("Terra"), byPlanet("TRAPPIST-1 e")] },
-    { label: "Primos da Terra", ids: [byPlanet("Terra"), byPlanet("Kepler-452 b"), byPlanet("Kepler-186 f")] },
-    { label: "Gigantes extremos", ids: [byPlanet("Júpiter"), byPlanet("KELT-9 b"), byPlanet("51 Pegasi b")] },
-  ],
-  moons: [
-    { label: "Lua × Titã", ids: [byMoon("Lua"), byMoon("Titã")] },
-    { label: "Mundos de oceano", ids: [byMoon("Europa"), byMoon("Encélado"), byMoon("Tritão")] },
-  ],
-};
+  useEffect(() => {
+    sceneRef.current?.setRelativeScale(relative);
+  }, [relative]);
 
-/* ------------------------------------------------------------ linha de métrica */
+  /* picker */
+  const items: PickerItem[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const match = (n: string) => n.toLowerCase().includes(q);
+    if (tab === "stars")
+      return CMP_STARS.filter((s) => match(s.name)).map((s) => ({
+        id: s.id, name: s.name, sub: `${s.type} · ${fmtNum(s.distLy, 1)} al`, color: s.color,
+      }));
+    if (tab === "moons")
+      return CMP_MOONS.filter((m) => match(m.name)).map((m) => ({
+        id: m.id, name: m.name, sub: `lua de ${m.planetName}`, color: m.color,
+      }));
+    return CMP_PLANETS.filter((p) => match(p.name)).map((p) => ({
+      id: p.id, name: p.name, sub: p.systemName, color: p.color,
+    }));
+  }, [tab, query]);
 
-function MetricRow<T>({ m, items, names }: { m: Metric<T>; items: T[]; names: string[] }) {
-  const vals = items.map(m.get);
-  const numeric = vals.filter((v): v is number => v != null && v > 0);
-  const maxF = numeric.length ? Math.max(...numeric.map((v) => scaleVal(v, m.scale))) : 1;
+  const choose = (id: string) => {
+    if (pickerSlot == null) return;
+    setSlots((s) => s.map((v, i) => (i === pickerSlot ? id : v)));
+    setPickerSlot(null);
+    setQuery("");
+    sfx.select();
+  };
+
+  const clear = (i: number) => {
+    setSlots((s) => s.map((v, idx) => (idx === i ? null : v)));
+    sfx.toggle();
+  };
+
+  /* régua de raios (log) entre os corpos presentes */
+  const radii = slots.map(radiusKmOf);
+  const presentRadii = radii.filter((r): r is number => r != null);
+  const maxLog = presentRadii.length ? Math.log10(Math.max(...presentRadii)) : 1;
+  const minLog = presentRadii.length ? Math.log10(Math.min(...presentRadii)) : 0;
+  const span = Math.max(maxLog - minLog, 0.0001);
+
+  const activeSlots = slots.filter(Boolean).length;
 
   return (
-    <div className="border-b border-line/60 py-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="font-mono text-[9px] tracking-[0.24em] text-dim">{m.label.toUpperCase()}</span>
-        {m.note && <span className="hidden font-mono text-[8px] tracking-[0.08em] text-dim/60 sm:block">{m.note}</span>}
+    <div className="absolute inset-0 z-30 flex flex-col bg-void/95">
+      {/* ── cabeçalho ── */}
+      <header className="flex shrink-0 items-center justify-between border-b border-line bg-panel/90 px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <h2 className="font-display text-[19px] font-bold text-ink">Observatório de Comparação</h2>
+          <span className="hidden font-mono text-[8.5px] tracking-[0.24em] text-dim md:block">
+            {activeSlots} {activeSlots === 1 ? "CORPO" : "CORPOS"} EM ESCALA {relative ? "REAL" : "IGUAL"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* toggle de escala */}
+          <div className="segmented">
+            <button className={relative ? "active" : ""} onClick={() => { setRelative(true); sfx.toggle(); }}>
+              Proporção real
+            </button>
+            <button className={!relative ? "active" : ""} onClick={() => { setRelative(false); sfx.toggle(); }}>
+              Tamanhos iguais
+            </button>
+            <span className="seg-ind" style={{ transform: relative ? "translateX(0)" : "translateX(100%)" }} />
+          </div>
+          <button onClick={onClose} className="btn-icon" title="Voltar (Esc)">
+            <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6" fill="none">
+              <path d="M1 1l10 10M11 1L1 11" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      {/* ── presets ── */}
+      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-panel/60 px-5 py-2">
+        <span className="font-mono text-[8px] tracking-[0.24em] text-dim">PRESETS</span>
+        {PRESETS.map((p) => (
+          <button
+            key={p.label}
+            onClick={() => { setSlots([...p.ids]); sfx.select(); }}
+            className="chip"
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {items.map((_, i) => {
-          const v = vals[i];
-          const w = v == null || v <= 0 ? 0 : Math.min(100, Math.max(1.5, (scaleVal(v, m.scale) / maxF) * 100));
-          const base = vals[0] ?? 0;
+
+      {/* ── palco 3D ── */}
+      <div className="relative min-h-0 flex-1">
+        <div ref={mountRef} className="absolute inset-0" />
+        <div ref={labelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" />
+
+        {/* régua de raios sobreposta */}
+        {activeSlots > 0 && (
+          <div className="pointer-events-none absolute left-1/2 top-4 z-10 w-[min(560px,80%)] -translate-x-1/2">
+            <div className="mb-1 text-center font-mono text-[8px] tracking-[0.24em] text-dim">
+              RAIO RELATIVO · ESCALA LOG
+            </div>
+            <div className="flex items-center gap-2">
+              {slots.map((id, i) => {
+                const r = radii[i];
+                if (!id || r == null) return null;
+                const w =
+                  presentRadii.length === 1
+                    ? 100
+                    : 8 + 92 * ((Math.log10(r) - minLog) / span);
+                return (
+                  <div key={id} className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <div className="h-[7px] overflow-hidden rounded-full bg-white/[0.05]">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${w}%`, background: SLOT_COLORS[i], boxShadow: `0 0 10px ${SLOT_COLORS[i]}` }}
+                      />
+                    </div>
+                    <div className="truncate text-center font-mono text-[8.5px] tabular-nums" style={{ color: SLOT_COLORS[i] }}>
+                      {fmtInt(r)} km
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeSlots === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="font-mono text-[11px] tracking-[0.2em] text-dim">
+              ADICIONE CORPOS NOS SLOTS ABAIXO PARA COMPARAR
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── slots comparativos ── */}
+      <div className="grid shrink-0 grid-cols-3 gap-2.5 border-t border-line bg-panel/90 p-3.5">
+        {slots.map((id, i) => {
+          const spec = id ? bodySpecFor(id) : null;
+          const isHovered = hovered === id;
           return (
-            <div key={i} className="flex items-center gap-2.5">
-              <span className="w-[86px] shrink-0 truncate font-body text-[11.5px] font-medium" style={{ color: SLOT_COLORS[i] }}>
-                {names[i]}
-              </span>
-              <div className="relative h-[17px] flex-1 overflow-hidden bg-white/[0.03]">
-                {!m.noBar && (
-                  <div
-                    className="h-full transition-[width] duration-700 ease-out"
-                    style={{
-                      width: `${w}%`,
-                      background: `linear-gradient(90deg, ${SLOT_COLORS[i]}44, ${SLOT_COLORS[i]})`,
-                      boxShadow: `0 0 10px ${SLOT_COLORS[i]}33`,
-                    }}
-                  />
-                )}
-              </div>
-              <span className="w-[118px] shrink-0 text-right font-mono text-[10.5px] text-ink tabular-nums">
-                {v == null ? "—" : v <= 0 && m.zeroLabel ? m.zeroLabel : m.fmt(v)}
-              </span>
-              <span className="w-[64px] shrink-0 text-right font-mono text-[9px] tabular-nums" style={{ color: i === 0 ? "transparent" : SLOT_COLORS[i] }}>
-                {i === 0 ? "·" : v == null || base == null ? "—" : delta(v, base)}
-              </span>
+            <div
+              key={i}
+              className={`rise-in relative flex flex-col overflow-hidden border transition-all duration-200 ${
+                id ? "bg-white/[0.025]" : "border-dashed border-line bg-transparent"
+              }`}
+              style={{
+                borderColor: isHovered ? SLOT_COLORS[i] : id ? `${SLOT_COLORS[i]}44` : undefined,
+                boxShadow: isHovered ? `0 0 24px ${SLOT_COLORS[i]}33, inset 0 0 30px ${SLOT_COLORS[i]}0d` : undefined,
+              }}
+            >
+              <span className="absolute left-0 top-0 h-full w-[3px]" style={{ background: id ? SLOT_COLORS[i] : "transparent" }} />
+              {id && spec ? (
+                <>
+                  <div className="flex items-start gap-2.5 px-3 pt-2.5">
+                    <span
+                      className="mt-0.5 block h-3.5 w-3.5 shrink-0 rounded-full"
+                      style={{ background: `radial-gradient(circle at 34% 30%, #ffffffcc, ${spec.accent} 45%, #000a)`, boxShadow: `0 0 12px ${spec.accent}` }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-body text-[14px] font-semibold text-ink">{spec.name}</div>
+                      <div className="font-mono text-[8px] tracking-[0.2em]" style={{ color: SLOT_COLORS[i] }}>
+                        {kindLabel(id)} · SLOT {i + 1}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button className="btn-icon !h-6 !w-6" title="Trocar corpo" onClick={() => { setPickerSlot(i); sfx.toggle(); }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />
+                        </svg>
+                      </button>
+                      <button className="btn-icon !h-6 !w-6" title="Remover" onClick={() => clear(i)}>
+                        <svg width="10" height="10" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6">
+                          <path d="M1 1l10 10M11 1L1 11" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 px-3 pb-2.5 pt-2">
+                    {statsOf(id).map((s) => (
+                      <div key={s.label}>
+                        <div className="font-mono text-[7px] tracking-[0.18em] text-dim">{s.label}</div>
+                        <div className="font-mono text-[11px] font-medium text-ink tabular-nums">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={() => { setPickerSlot(i); sfx.toggle(); }}
+                  className="group flex flex-1 flex-col items-center justify-center gap-1.5 py-5 text-dim transition-colors hover:text-solar-hot"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-line text-xl transition-transform group-hover:scale-110 group-hover:border-solar/60">
+                    +
+                  </span>
+                  <span className="font-mono text-[8.5px] tracking-[0.22em]">ADICIONAR CORPO</span>
+                </button>
+              )}
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
 
-/* ------------------------------------------------------------ painel */
-
-export default function ComparePanel() {
-  const [tab, setTab] = useState<Tab>("planets");
-  const [starSel, setStarSel] = useState<string[]>(() => [byStar("Sol"), byStar("TRAPPIST")].filter(Boolean) as string[]);
-  const [planetSel, setPlanetSel] = useState<string[]>(() => [byPlanet("Terra"), byPlanet("TRAPPIST-1 e")].filter(Boolean) as string[]);
-  const [moonSel, setMoonSel] = useState<string[]>(() => [byMoon("Lua"), byMoon("Titã")].filter(Boolean) as string[]);
-  const [query, setQuery] = useState("");
-
-  const toggle = (setter: Dispatch<SetStateAction<string[]>>, id: string) => {
-    sfx.select();
-    setter((prev) => {
-      if (prev.includes(id)) return prev.length > 1 ? prev.filter((x) => x !== id) : prev;
-      const next = [...prev, id];
-      return next.length > MAX_SLOTS ? [...next.slice(next.length - MAX_SLOTS)] : next;
-    });
-  };
-
-  const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (tab === "stars")
-      return CMP_STARS.map((s) => ({ id: s.id, title: s.name, sub: `${s.type} · ${s.distLy === 0 ? "aqui" : fmtNum(s.distLy, 0) + " al"}`, color: s.color })).filter(
-        (x) => !q || x.title.toLowerCase().includes(q) || x.sub.toLowerCase().includes(q)
-      );
-    if (tab === "planets")
-      return CMP_PLANETS.map((p) => ({ id: p.id, title: p.name, sub: `${p.systemName} · ${fmtNum(p.radiusEarth, 2)} R⊕${p.habitable ? " · ZH" : ""}`, color: p.color })).filter(
-        (x) => !q || x.title.toLowerCase().includes(q) || x.sub.toLowerCase().includes(q)
-      );
-    return CMP_MOONS.map((m) => ({ id: m.id, title: m.name, sub: `lua de ${m.planetName} · ${fmtNum(m.radiusKm, 0)} km`, color: m.color })).filter(
-      (x) => !q || x.title.toLowerCase().includes(q) || x.sub.toLowerCase().includes(q)
-    );
-  }, [tab, query]);
-
-  const sel = tab === "stars" ? starSel : tab === "planets" ? planetSel : moonSel;
-  const setter = tab === "stars" ? setStarSel : tab === "planets" ? setPlanetSel : setMoonSel;
-
-  const slots = useMemo(() => {
-    if (tab === "stars") {
-      const items = starSel.map((id) => CMP_STARS.find((s) => s.id === id)!).filter(Boolean);
-      return { items, names: items.map((s) => s.name), metrics: STAR_METRICS as Metric<unknown>[], heads: items.map((s) => ({ title: s.name, sub: `${s.type} · ${s.planetCount} planetas`, color: s.color })) };
-    }
-    if (tab === "planets") {
-      const items = planetSel.map((id) => CMP_PLANETS.find((p) => p.id === id)!).filter(Boolean);
-      return {
-        items,
-        names: items.map((p) => p.name),
-        metrics: PLANET_METRICS as Metric<unknown>[],
-        heads: items.map((p) => ({
-          title: p.name,
-          sub: `${p.systemName} · ${p.isSolar ? "Sistema Solar" : "exoplaneta"}${p.habitable ? " · ZONA HABITÁVEL" : ""}`,
-          color: p.color,
-        })),
-      };
-    }
-    const items = moonSel.map((id) => CMP_MOONS.find((m) => m.id === id)!).filter(Boolean);
-    return { items, names: items.map((m) => m.name), metrics: MOON_METRICS as Metric<unknown>[], heads: items.map((m) => ({ title: m.name, sub: `lua de ${m.planetName}`, color: m.color })) };
-  }, [tab, starSel, planetSel, moonSel]);
-
-  const TABS: { id: Tab; label: string; count: number; icon: ReactNode }[] = [
-    {
-      id: "stars", label: "Estrelas", count: CMP_STARS.length,
-      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></svg>,
-    },
-    {
-      id: "planets", label: "Planetas", count: CMP_PLANETS.length,
-      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="6" /><ellipse cx="12" cy="12" rx="10.5" ry="3.4" transform="rotate(-16 12 12)" /></svg>,
-    },
-    {
-      id: "moons", label: "Luas", count: CMP_MOONS.length,
-      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="14" cy="12" r="7" /><path d="M9.5 6.5a7 7 0 0 0 0 11" /><circle cx="4" cy="12" r="1.6" /></svg>,
-    },
-  ];
-
-  return (
-    <div className="flex min-h-0 flex-1">
-      {/* ══════════ seletor ══════════ */}
-      <aside className="flex w-[300px] shrink-0 flex-col border-r border-line bg-panel/90">
-        <div className="grid grid-cols-3 border-b border-line">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => { setTab(t.id); setQuery(""); sfx.toggle(); }}
-              className={`flex flex-col items-center gap-1 py-3 transition-colors ${tab === t.id ? "bg-solar/10 text-solar-hot" : "text-dim hover:text-ink"}`}
-            >
-              {t.icon}
-              <span className="font-mono text-[8.5px] tracking-[0.18em]">{t.label.toUpperCase()}</span>
-              <span className="font-mono text-[8px] text-dim/70 tabular-nums">{t.count}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* presets */}
-        <div className="border-b border-line px-3 py-2.5">
-          <div className="font-mono text-[7.5px] tracking-[0.24em] text-dim">COMPARAÇÕES RÁPIDAS</div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {PRESETS[tab].map((p) => (
-              <button
-                key={p.label}
-                onClick={() => {
-                  const ids = p.ids.filter(Boolean) as string[];
-                  if (ids.length) { setter(ids); sfx.select(); }
-                }}
-                className="border border-line px-2 py-1 font-mono text-[8px] tracking-[0.06em] text-dim transition-colors hover:border-solar/50 hover:text-solar-hot"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="px-3 py-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Buscar ${TABS.find((t) => t.id === tab)?.label.toLowerCase()}…`}
-            className="w-full border border-line bg-white/[0.03] px-2.5 py-1.5 font-body text-[12px] text-ink outline-none placeholder:text-dim/50 focus:border-solar/60"
-          />
-        </div>
-
-        <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-          {list.map((x) => {
-            const active = sel.includes(x.id);
-            const slotIdx = sel.indexOf(x.id);
-            return (
-              <button
-                key={x.id}
-                onClick={() => toggle(setter, x.id)}
-                className={`flex w-full items-center gap-2.5 border px-2.5 py-2 text-left transition-all duration-150 ${
-                  active ? "border-solar/40 bg-solar/[0.07]" : "border-transparent hover:bg-white/[0.03]"
-                }`}
-              >
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{
-                    background: active ? SLOT_COLORS[slotIdx] : x.color,
-                    boxShadow: `0 0 7px ${active ? SLOT_COLORS[slotIdx] : x.color}`,
-                  }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className={`block truncate font-body text-[12px] font-medium ${active ? "text-ink" : "text-ink/85"}`}>{x.title}</span>
-                  <span className="block truncate font-mono text-[8px] tracking-[0.08em] text-dim">{x.sub}</span>
-                </span>
-                {active && (
-                  <span className="shrink-0 font-mono text-[8.5px] font-semibold" style={{ color: SLOT_COLORS[slotIdx] }}>
-                    {slotIdx + 1}º
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          {list.length === 0 && (
-            <div className="px-3 py-6 text-center font-mono text-[9px] tracking-[0.16em] text-dim">NADA ENCONTRADO</div>
-          )}
-        </div>
-        <div className="border-t border-line px-3 py-2 font-mono text-[7.5px] leading-relaxed tracking-[0.1em] text-dim/70">
-          SELECIONE ATÉ {MAX_SLOTS} CORPOS · ESCALA LOG NAS FAIXAS EXTREMAS
-        </div>
-      </aside>
-
-      {/* ══════════ resultado ══════════ */}
-      <main className="scroll-slim min-h-0 flex-1 overflow-y-auto bg-void/60 px-6 py-5">
-        <div className="rise-in mx-auto max-w-[880px]">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-[20px] font-bold text-ink">
-              Comparação de {TABS.find((t) => t.id === tab)?.label.toLowerCase()}
-            </h2>
-            <span className="font-mono text-[8.5px] tracking-[0.22em] text-dim">
-              {sel.length} {sel.length === 1 ? "CORPO" : "CORPOS"} · BASE = 1º SELECIONADO
-            </span>
-          </div>
-
-          {/* cabeçalhos dos slots */}
-          <div className="mt-4 grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(slots.heads.length, 1)}, 1fr)` }}>
-            {slots.heads.map((h, i) => (
-              <div
-                key={i}
-                className="rise-in border bg-panel/80 px-3.5 py-3"
-                style={{ borderColor: `${SLOT_COLORS[i]}44`, animationDelay: `${i * 70}ms` }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[9px] font-semibold" style={{ color: SLOT_COLORS[i] }}>{i + 1}º</span>
-                  <span className="truncate font-display text-[14px] font-bold text-ink">{h.title}</span>
-                </div>
-                <div className="mt-1 truncate font-mono text-[8px] tracking-[0.12em] text-dim">{h.sub.toUpperCase()}</div>
-                <div className="mt-2 h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${SLOT_COLORS[i]}, transparent)` }} />
+      {/* ── picker ── */}
+      {pickerSlot != null && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setPickerSlot(null)}>
+          <div
+            className="rise-in flex h-[min(520px,80vh)] w-[min(680px,92vw)] flex-col border border-line bg-panel shadow-[0_30px_90px_rgba(0,0,0,0.7)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="font-mono text-[10px] tracking-[0.24em] text-dim">
+                SELECIONAR PARA O <span style={{ color: SLOT_COLORS[pickerSlot] }}>SLOT {pickerSlot + 1}</span>
               </div>
-            ))}
-          </div>
+              <button className="btn-icon" onClick={() => setPickerSlot(null)}>
+                <svg width="11" height="11" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M1 1l10 10M11 1L1 11" />
+                </svg>
+              </button>
+            </div>
 
-          {/* métricas */}
-          <div className="mt-2 border border-line bg-panel/60 px-4 py-1">
-            {slots.metrics.map((m, i) => (
-              <MetricRow key={i} m={m as Metric<never>} items={slots.items as never[]} names={slots.names} />
-            ))}
-          </div>
+            <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+              <div className="segmented">
+                {(["stars", "planets", "moons"] as Tab[]).map((t) => (
+                  <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+                    {t === "stars" ? "Estrelas" : t === "planets" ? "Planetas" : "Luas"}
+                  </button>
+                ))}
+              </div>
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar…"
+                className="ml-auto w-44 border border-line bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] text-ink outline-none placeholder:text-dim focus:border-solar/60"
+              />
+            </div>
 
-          <p className="mt-3 font-mono text-[8px] leading-relaxed tracking-[0.1em] text-dim/70">
-            BARRAS NORMALIZADAS PELO MAIOR VALOR DE CADA LINHA · MASSAS, LUMINOSIDADE, PERÍODOS E DISTÂNCIAS USAM
-            ESCALA LOGARÍTMICA PARA MANTER PROPORÇÕES LEGÍVEIS · DADOS: NASA EXOPLANET ARCHIVE · OPEN EXOPLANET CATALOGUE · HWC/PHL
-          </p>
+            <div className="scroll-slim grid flex-1 grid-cols-2 gap-1.5 overflow-y-auto p-3 sm:grid-cols-3">
+              {items.map((it) => (
+                <button
+                  key={it.id}
+                  onClick={() => choose(it.id)}
+                  className="group flex items-center gap-2.5 border border-transparent px-2.5 py-2 text-left transition-all duration-150 hover:translate-x-0.5 hover:border-line hover:bg-white/[0.04]"
+                >
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full transition-transform group-hover:scale-125"
+                    style={{ background: `radial-gradient(circle at 34% 30%, #ffffffbb, ${it.color} 45%, #0009)`, boxShadow: `0 0 8px ${it.color}88` }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-body text-[12.5px] font-medium text-ink group-hover:text-solar-hot">{it.name}</span>
+                    <span className="block truncate font-mono text-[8.5px] text-dim">{it.sub}</span>
+                  </span>
+                </button>
+              ))}
+              {items.length === 0 && (
+                <p className="col-span-full py-8 text-center font-mono text-[10px] tracking-[0.2em] text-dim">NADA ENCONTRADO</p>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
+      )}
     </div>
   );
 }
