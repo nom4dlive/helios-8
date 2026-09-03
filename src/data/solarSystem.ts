@@ -25,6 +25,10 @@ export interface SurfaceParams {
   clouds?: { tint: string; amp: number };
   ring?: { inner: number; outer: number; tint: string; opacity: number };
   spot?: { latDeg: number; lonDeg: number; size: number; color: string };
+  /** técnicas genesis: biomas por altitude, rim light e relevo volumétrico */
+  biome?: number;
+  rim?: number;
+  terrainAmp?: number;
 }
 
 export interface SolarPlanet {
@@ -71,10 +75,11 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
     tempLabel: "167 °C (média)", gravity: 3.7, moonsKnown: 0, accent: "#b8a894",
     note: "O menor planeta e o mais próximo do Sol. Um ano dura 88 dias, mas um dia solar dura 176 dias terrestres.",
     surface: {
-      palette: ["#8a8378", "#6e675c", "#a39a8c", "#544d43", "#d8d2c8", "#000000"],
+      palette: ["#5e564c", "#6e675c", "#a39a8c", "#8a8378", "#d8d2c8", "#b0a898"],
       bandFreq: 2, bandTurb: 0, bandAmp: 0, noiseScale: 5, noiseAmp: 0.5,
       ridgeScale: 9, ridgeAmp: 0.25, craterScale: 14, craterAmp: 0.55, polarCap: 0,
       atmosColor: "#9a9088", atmosAmp: 0.06, glow: 0, spec: 0,
+      biome: 0.25, rim: 0.1, terrainAmp: 0.022,
     },
   },
   {
@@ -89,6 +94,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#f0d090", atmosAmp: 0.55, glow: 0, spec: 0,
       clouds: { tint: "#e8c890", amp: 0.9 },
+      rim: 0.3,
     },
   },
   {
@@ -103,6 +109,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#6ab0ff", atmosAmp: 0.5, glow: 0, spec: 0, earthLike: true,
       clouds: { tint: "#ffffff", amp: 0.8 },
+      rim: 0.5, terrainAmp: 0.014,
     },
   },
   {
@@ -116,6 +123,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       bandFreq: 3, bandTurb: 0.6, bandAmp: 0.12, noiseScale: 4.5, noiseAmp: 0.5,
       ridgeScale: 7, ridgeAmp: 0.3, craterScale: 10, craterAmp: 0.3, polarCap: 0.86,
       atmosColor: "#e0a070", atmosAmp: 0.28, glow: 0, spec: 0,
+      biome: 0.55, rim: 0.18, terrainAmp: 0.03,
     },
   },
   {
@@ -130,6 +138,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#f0d8b0", atmosAmp: 0.4, glow: 0, spec: 0,
       spot: { latDeg: -22, lonDeg: 40, size: 0.34, color: "#c05030" },
+      rim: 0.4,
     },
   },
   {
@@ -144,6 +153,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#f0e0b8", atmosAmp: 0.35, glow: 0, spec: 0,
       ring: { inner: 1.25, outer: 2.35, tint: "#d8c8a8", opacity: 0.92 },
+      rim: 0.38,
     },
   },
   {
@@ -158,6 +168,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#a8e0e8", atmosAmp: 0.5, glow: 0, spec: 0,
       ring: { inner: 1.6, outer: 1.95, tint: "#8aa8b0", opacity: 0.3 },
+      rim: 0.45,
     },
   },
   {
@@ -172,6 +183,7 @@ export const SOLAR_PLANETS: SolarPlanet[] = [
       ridgeScale: 0, ridgeAmp: 0, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#6a90e8", atmosAmp: 0.5, glow: 0, spec: 0,
       spot: { latDeg: -28, lonDeg: 100, size: 0.26, color: "#1a2a60" },
+      rim: 0.45,
     },
   },
 ];
@@ -185,10 +197,11 @@ const M = (
 ): SolarMoon => ({ id, planetId, name, cls, radiusKm, orbitKm, periodDays, accent, note, surface });
 
 const CRATERS = (base: string, mid: string, dark: string, craterAmp: number): SurfaceParams => ({
-  palette: [base, mid, dark, dark, "#e8e4dc", "#000000"],
+  palette: [base, mid, dark, dark, "#e8e4dc", mid],
   bandFreq: 0, bandTurb: 0, bandAmp: 0, noiseScale: 5, noiseAmp: 0.4,
   ridgeScale: 8, ridgeAmp: 0.15, craterScale: 16, craterAmp, polarCap: 0,
   atmosColor: "#888888", atmosAmp: 0, glow: 0, spec: 0,
+  biome: 0.3, rim: 0.12, terrainAmp: 0.025,
 });
 
 export const SOLAR_MOONS: SolarMoon[] = [
@@ -206,13 +219,15 @@ export const SOLAR_MOONS: SolarMoon[] = [
     { palette: ["#d8c050", "#b89830", "#f0e070", "#8a6a20", "#f8f0a0", "#c85a20"],
       bandFreq: 0, bandTurb: 0, bandAmp: 0, noiseScale: 6, noiseAmp: 0.55,
       ridgeScale: 10, ridgeAmp: 0.3, craterScale: 12, craterAmp: 0.25, polarCap: 0,
-      atmosColor: "#e8d870", atmosAmp: 0.1, glow: 0.45, spec: 0 }, "lava"),
+      atmosColor: "#e8d870", atmosAmp: 0.1, glow: 0.45, spec: 0,
+      biome: 0.35, rim: 0.15, terrainAmp: 0.02 }, "lava"),
   M("europa", "jupiter", "Europa", 1560.8, 671034, 3.551, "#d8d4c8",
     "Sob a crosta de gelo há um oceano global com o dobro da água da Terra — o principal alvo na busca por vida.",
     { palette: ["#c8c0b0", "#a89880", "#e8e0d0", "#8a6850", "#f4f0e8", "#a05838"],
       bandFreq: 0, bandTurb: 0, bandAmp: 0, noiseScale: 4, noiseAmp: 0.2,
       ridgeScale: 12, ridgeAmp: 0.45, craterScale: 8, craterAmp: 0.1, polarCap: 0,
-      atmosColor: "#e8e0d8", atmosAmp: 0.08, glow: 0, spec: 0.35 }, "ocean"),
+      atmosColor: "#e8e0d8", atmosAmp: 0.08, glow: 0, spec: 0.35,
+      biome: 0.2, rim: 0.2, terrainAmp: 0.008 }, "ocean"),
   M("ganymede", "jupiter", "Ganimedes", 2634.1, 1070400, 7.155, "#a89a88",
     "A maior lua do sistema solar — maior que o planeta Mercúrio. É a única lua com campo magnético próprio.",
     CRATERS("#8a8070", "#a89a88", "#5e564a", 0.45)),
@@ -231,7 +246,8 @@ export const SOLAR_MOONS: SolarMoon[] = [
       bandFreq: 4, bandTurb: 1.5, bandAmp: 0.2, noiseScale: 4, noiseAmp: 0.35,
       ridgeScale: 6, ridgeAmp: 0.15, craterScale: 0, craterAmp: 0, polarCap: 0,
       atmosColor: "#e8a858", atmosAmp: 0.6, glow: 0, spec: 0.2,
-      clouds: { tint: "#e0a050", amp: 0.55 } }, "hycean"),
+      clouds: { tint: "#e0a050", amp: 0.55 },
+      rim: 0.55 }, "hycean"),
   M("miranda", "uranus", "Miranda", 235.8, 129390, 1.413, "#b8b4b0",
     "O terreno mais estranho do sistema solar: penhascos de 20 km e um 'V' gigante chamado Verona Rupes.",
     CRATERS("#a09c98", "#b8b4b0", "#706c68", 0.5)),
@@ -246,7 +262,8 @@ export const SOLAR_MOONS: SolarMoon[] = [
     { palette: ["#d8c8c0", "#b8a8a0", "#f0e8e0", "#8a7870", "#f8f4f0", "#c09888"],
       bandFreq: 0, bandTurb: 0, bandAmp: 0, noiseScale: 5, noiseAmp: 0.35,
       ridgeScale: 9, ridgeAmp: 0.2, craterScale: 11, craterAmp: 0.3, polarCap: 0.78,
-      atmosColor: "#e8d8d0", atmosAmp: 0.1, glow: 0, spec: 0.25 }, "ocean"),
+      atmosColor: "#e8d8d0", atmosAmp: 0.1, glow: 0, spec: 0.25,
+      biome: 0.35, rim: 0.2, terrainAmp: 0.02 }, "ocean"),
   M("nereid", "neptune", "Nereida", 170, 5513400, 360.13, "#8a847c",
     "A órbita mais excêntrica entre as luas: vai de 1,4 a 9,7 milhões de km de Netuno.",
     CRATERS("#76706a", "#8a847c", "#4e4a44", 0.55)),

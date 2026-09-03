@@ -15,6 +15,7 @@ import {
 import { solveKepler } from "../data/catalog";
 import {
   SURFACE_VERT,
+  SPHERE_TERRAIN_VERT,
   PLANET_FRAG,
   EARTH_FRAG,
   CLOUD_SHELL_FRAG,
@@ -78,6 +79,10 @@ function surfaceUniforms(s: SurfaceParams, sunPos: THREE.Vector3) {
     uGlow: { value: THREE.MathUtils.clamp(s.glow, 0, 1.5) },
     uSpec: { value: THREE.MathUtils.clamp(s.spec, 0, 1.5) },
     uSunPos: { value: sunPos },
+    /* técnicas genesis */
+    uBiome: { value: THREE.MathUtils.clamp(s.biome ?? 0, 0, 1) },
+    uRim: { value: THREE.MathUtils.clamp(s.rim ?? 0, 0, 1) },
+    uTerrainAmp: { value: THREE.MathUtils.clamp(s.terrainAmp ?? 0, 0, 0.08) },
   };
   if (s.spot) {
     const lat = THREE.MathUtils.degToRad(s.spot.latDeg);
@@ -333,7 +338,7 @@ export class SolarScene {
       const visR = planetVisR(planet.radiusKm);
       const uniforms = surfaceUniforms(planet.surface, sunPos);
       const mat = new THREE.ShaderMaterial({
-        vertexShader: SURFACE_VERT,
+        vertexShader: (planet.surface.terrainAmp ?? 0) > 0 ? SPHERE_TERRAIN_VERT : SURFACE_VERT,
         fragmentShader: planet.surface.earthLike ? EARTH_FRAG : PLANET_FRAG,
         uniforms,
       });
@@ -428,7 +433,7 @@ export class SolarScene {
         const mVis = moonVisR(moon.radiusKm);
         const mUniforms = surfaceUniforms(moon.surface, sunPos);
         const mMat = new THREE.ShaderMaterial({
-          vertexShader: SURFACE_VERT,
+          vertexShader: (moon.surface.terrainAmp ?? 0) > 0 ? SPHERE_TERRAIN_VERT : SURFACE_VERT,
           fragmentShader: PLANET_FRAG,
           uniforms: mUniforms,
         });

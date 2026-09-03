@@ -39,7 +39,100 @@ float ridged(vec3 p) {
   }
   return s;
 }
+
+/* --- técnicas GENESIS (nom4dlive/genesis) --- */
+
+/* 3D simplex (Ashima) — gradiente suave p/ warp de domínio */
+vec3 gmod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 gmod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 gpermute(vec4 x) { return gmod289(((x * 34.0) + 1.0) * x); }
+vec4 gtaylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+float snoise(vec3 v) {
+  const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = gmod289(i);
+  vec4 p = gpermute(gpermute(gpermute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0) * 2.0 + 1.0;
+  vec4 s1 = floor(b1) * 2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = gtaylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+/* warp de domínio em cascata q→r (vórtices de tempestade) */
+vec3 domainWarp2(vec3 p, float amount) {
+  vec3 q = vec3(
+    snoise(p + vec3(0.0, 0.0, 0.0)),
+    snoise(p + vec3(5.2, 1.3, 0.0)),
+    snoise(p + vec3(1.7, 9.2, 0.0)));
+  return vec3(
+    snoise(p + amount * q + vec3(1.7, 9.2, 0.0)),
+    snoise(p + amount * q + vec3(8.3, 2.8, 0.0)),
+    snoise(p + amount * q + vec3(3.1, 5.7, 0.0)));
+}
+
+/* Voronoi F1 — células p/ crateras e terrenos celulares */
+float voronoi(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  float md = 8.0;
+  for (int x = -1; x <= 1; x++)
+  for (int y = -1; y <= 1; y++)
+  for (int z = -1; z <= 1; z++) {
+    vec3 c = vec3(float(x), float(y), float(z));
+    vec3 r = c + vec3(
+      hash1(i + c + vec3(0.0, 1.3, 2.7)),
+      hash1(i + c + vec3(3.1, 0.0, 5.9)),
+      hash1(i + c + vec3(7.7, 4.1, 0.0))) - f;
+    md = min(md, dot(r, r));
+  }
+  return sqrt(md);
+}
+
+/* rampa de biomas por altitude (oceano profundo → neve) */
+vec3 biomeRamp(vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4, vec3 c5,
+               float h, float sea, float shore, float hill) {
+  vec3 col = mix(c0, c1, smoothstep(sea * 0.3, sea, h));
+  col = mix(col, c2, smoothstep(sea, shore, h));
+  col = mix(col, c3, smoothstep(shore, hill, h));
+  col = mix(col, c4, smoothstep(hill, hill + 0.22, h));
+  col = mix(col, c5, smoothstep(hill + 0.2, hill + 0.42, h));
+  return col;
+}
 `;
+
+
 
 export const SURFACE_VERT = /* glsl */ `
 varying vec3 vObjPos;
@@ -50,6 +143,40 @@ void main() {
   vObjPos = position;
   vUv = uv;
   vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+/**
+ * Vertice com deslocamento de terreno (genesis): a esfera é esculpida por FBM
+ * no plano tangente, gerando silhuetas reais de montanhas no terminador.
+ * Sem costura de polo (amostragem 2D no plano tangente, não UV).
+ */
+export const SPHERE_TERRAIN_VERT = /* glsl */ `
+${NOISE_GLSL}
+uniform float uTerrainAmp;
+varying vec3 vObjPos;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+varying vec2 vUv;
+
+vec3 displaceTangent(vec3 n, float amp) {
+  vec3 t = normalize(cross(n, vec3(0.137, 1.0, 0.271)));
+  vec3 b = normalize(cross(n, t));
+  vec2 ab = vec2(dot(vObjPos, t), dot(vObjPos, b));
+  float h = fbm(vec3(ab * 2.2, 4.17)) - 0.5;
+  h += 0.3 * (fbm(vec3(ab * 7.0, 9.31)) - 0.5);
+  return position + n * (h * amp);
+}
+
+void main() {
+  vObjPos = position;
+  vUv = uv;
+  vec3 n = normalize(position);
+  vec3 displaced = displaceTangent(n, uTerrainAmp);
+  vec4 wp = modelMatrix * vec4(displaced, 1.0);
   vWorldPos = wp.xyz;
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
   gl_Position = projectionMatrix * viewMatrix * wp;
@@ -84,6 +211,8 @@ uniform float uAtmosAmp;
 uniform float uGlow;
 uniform float uSpec;
 uniform vec3 uSunPos;
+uniform float uBiome;
+uniform float uRim;
 varying vec3 vObjPos;
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
@@ -93,20 +222,40 @@ void main() {
   vec3 p = normalize(vObjPos);
   float t = uTime;
 
-  float bands = sin(p.y * uBandFreq + (fbm(p * 3.0 + vec3(0.0, t * 0.02, 0.0)) - 0.5) * uBandTurb);
+  /* bandas: baratas p/ rochosos, warp de domínio em cascata p/ gigantes (genesis) */
+  float bands = 0.0;
+  if (uBandAmp > 0.001) {
+    if (uBandTurb > 0.001) {
+      vec3 wq = domainWarp2(p * vec3(1.6, uBandFreq * 0.35, 1.6) + vec3(0.0, t * 0.02, 0.0), 1.25);
+      bands = sin(p.y * uBandFreq + wq.x * uBandTurb + wq.y * uBandTurb * 0.5);
+    } else {
+      bands = sin(p.y * uBandFreq);
+    }
+  }
   float n = fbm(p * uNoiseScale + 11.7);
   float ridge = ridged(p * uRidgeScale + 4.2);
 
   vec3 col = uPalette[0];
   col = mix(col, uPalette[1], smoothstep(-0.9, 0.9, bands) * uBandAmp);
-  col = mix(col, uPalette[2], smoothstep(0.25, 0.8, n) * uNoiseAmp);
+
+  /* biomas por altitude (genesis): a elevação controla a rampa de cores */
+  if (uBiome > 0.001) {
+    float hgt = n * 0.65 + ridge * 0.35;
+    vec3 bio = biomeRamp(uPalette[0], uPalette[1], uPalette[2], uPalette[3],
+                         uPalette[4], uPalette[5], hgt, 0.36, 0.52, 0.72);
+    col = mix(col, bio, uBiome);
+  } else {
+    col = mix(col, uPalette[2], smoothstep(0.25, 0.8, n) * uNoiseAmp);
+  }
   col = mix(col, uPalette[3], smoothstep(0.45, 0.95, ridge) * uRidgeAmp);
 
+  /* crateras celulares Voronoi (genesis) — bacia escura + borda iluminada */
   if (uCraterAmp > 0.001) {
-    float c = fbm(p * uCraterScale + 31.4);
-    float crater = smoothstep(0.5, 0.56, c) * smoothstep(0.74, 0.62, c);
-    col *= 1.0 - crater * uCraterAmp;
-    col += vec3(0.9) * crater * uCraterAmp * 0.08;
+    float cell = voronoi(p * uCraterScale + 31.4);
+    float crater = 1.0 - smoothstep(0.05, 0.42, cell);
+    float rimC = smoothstep(0.28, 0.4, cell) * (1.0 - smoothstep(0.42, 0.58, cell));
+    col *= 1.0 - crater * uCraterAmp * 0.85;
+    col += vec3(1.0, 0.96, 0.9) * rimC * uCraterAmp * 0.28;
   }
 
   if (uSpotOn > 0.5) {
@@ -144,6 +293,12 @@ void main() {
 
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.6);
   col += uAtmosColor * fres * uAtmosAmp * (0.25 + 0.75 * dif);
+
+  /* rim light na silhueta (genesis) */
+  if (uRim > 0.001) {
+    float rimF = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0);
+    col += uAtmosColor * rimF * uRim * 0.55;
+  }
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -190,6 +345,11 @@ void main() {
 
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
   col += uAtmosColor * fres * uAtmosAmp * (0.3 + 0.7 * dif);
+
+  /* rim light na silhueta (genesis) */
+  float rimF = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0);
+  col += uAtmosColor * rimF * 0.35;
+
   gl_FragColor = vec4(col, 1.0);
 }
 `;

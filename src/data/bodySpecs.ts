@@ -31,6 +31,10 @@ export interface SurfaceLike {
   spec: number;
   earthLike?: boolean;
   spot?: { latDeg: number; lonDeg: number; size: number; color: string };
+  /** técnicas genesis */
+  biome?: number;
+  rim?: number;
+  terrainAmp?: number;
 }
 
 export interface BodySpec {

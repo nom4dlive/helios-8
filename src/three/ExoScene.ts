@@ -190,6 +190,10 @@ function surfaceUniforms(s: SurfaceDef, sunPos: THREE.Vector3) {
     uGlow: { value: THREE.MathUtils.clamp(s.glow, 0, 1.5) },
     uSpec: { value: THREE.MathUtils.clamp(s.spec, 0, 1.5) },
     uSunPos: { value: sunPos },
+    /* técnicas genesis: biomas p/ rochosos, rim light p/ todos */
+    uBiome: { value: s.craterAmp > 0.01 || s.ridgeAmp > 0.01 || s.spec > 0.01 ? 0.45 : 0 },
+    uRim: { value: s.craterAmp > 0.01 || s.ridgeAmp > 0.01 || s.spec > 0.01 ? 0.3 : 0.35 },
+    uTerrainAmp: { value: 0 },
   };
 }
 
