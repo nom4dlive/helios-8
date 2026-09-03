@@ -551,6 +551,13 @@ export class SolarScene {
   setSpeed(m: number) { this.speedMult = THREE.MathUtils.clamp(m, 0.1, 12); }
   setSpin(m: number) { this.spinMult = THREE.MathUtils.clamp(m, 0, 4); }
 
+  /** aproxima (<1) ou afasta (>1) a câmera do alvo atual */
+  zoomBy(f: number) {
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    const len = THREE.MathUtils.clamp(dir.length() * Math.max(f, 0.05), 2.5, 700);
+    this.camera.position.copy(this.controls.target).addScaledVector(dir.normalize(), len);
+  }
+
   /* -------------------------------------------------- eventos */
 
   private onDown = (e: PointerEvent) => { this.downPos = { x: e.clientX, y: e.clientY }; };

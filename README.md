@@ -1,62 +1,65 @@
-# ORBE — Atlas de Mundos Exoplanetários
+# ORBE · Atlas de Mundos Exoplanetários
 
-Simulação 3D interativa (React + Three.js + Tailwind v4) de **22 sistemas exoplanetários reais** com 60 mundos, visita em primeira pessoa às superfícies e um professor alienígena que ensina ciência em linguagem acessível.
+Simulação 3D interativa (React + Three.js + Tailwind v4) com três modos integrados: exploração completa do **Sistema Solar**, catálogo de **exoplanetas reais** (HWC + Open Exoplanet Catalogue) e um **comparador universal** de estrelas, planetas e luas.
 
-## 🔭 Fontes dos dados
+## 🧭 Os três modos (teclas `1` `2` `3`)
 
-| Fonte | O que foi usado |
+| Modo | Conteúdo |
 |---|---|
-| **Habitable Worlds Catalog** (PHL @ UPR Arecibo) | 12 sistemas focados em habitabilidade (Proxima b, TRAPPIST-1, Teegarden, Kepler-62/186/452…) |
-| **Open Exoplanet Catalogue** (systems.xml, Rein et al.) | Esquema de metadados — método e ano de descoberta, excentricidade, metalicidade [Fe/H] — e 10 mundos extremos (51 Peg b, KELT-9 b, HR 8799, pulsar PSR B1257+12…) |
-| **NASA Exoplanet Archive** | Raios, massas, períodos, temperaturas de equilíbrio, tipos espectrais |
+| **Sistema Solar** | Sol + 8 planetas + 15 luas em órbitas keplerianas reais (excentricidade, periélio, inclinação axial), anéis de Saturno/Urano, cinturão de asteroides, rótulos flutuantes e foco de câmera em qualquer corpo. |
+| **Exoplanetas** | 22 sistemas reais / 60 mundos: TRAPPIST-1, Proxima, TOI-700, Teegarden, Kepler-186/452/22, KELT-9 b, HR 8799, planetas de pulsar… com zona habitável de Kopparapu, ESI, metalicidade e método/ano de descoberta. |
+| **Comparar** | Painel dedicado: selecione até 3 estrelas, planetas ou luas (de qualquer sistema, incluindo o Solar) e compare com barras animadas, deltas percentuais e escala logarítmica nas faixas extremas. |
 
-## ✨ Recursos
+## 🕹 Controles
 
-### Explorador de sistemas
-- **Órbitas elípticas reais** — excentricidade do catálogo resolvida pela equação de Kepler (Newton, 6 iterações); semieixo maior derivado pela **3ª lei de Kepler** (`a³ = P²·M★`).
-- **Zona habitável de Kopparapu** desenhada em verde; planetas candidatos destacados.
-- **12 classes de mundo** com superfícies procedurais próprias (GLSL): temperado, desértico, **lava com veios emissivos em bloom**, oceânico (especular), hycean, super-Terra, mini-Netuno, Júpiter quente, gigante gasoso, **gigante imageado** (jovem e incandescente) e **mundo de pulsar** (estrela-farol piscante).
-- Estrelas com granulação animada, coroa e **modo pulsar**; fundo com nebulosa e 1.600 estrelas cintilantes; bloom em meia resolução.
-- **Comparação lado a lado** com o Sol + planetas rochosos, na mesma escala visual.
-- Controles de **pausa / velocidade (0,25–8×) / rotação (0–3×)**; raycast para selecionar corpos.
-
-### Painel de dados (riqueza OEC)
-- Estrela: tipo espectral, temperatura, massa, raio, luminosidade, **metalicidade [Fe/H]**, idade, limites da ZH.
-- Planeta: raio, massa, período, **excentricidade**, distância (UA e milhões de km), insolação, temperatura de equilíbrio, **ESI** (Índice de Semelhança com a Terra), **método e ano de descoberta**, classe e nota científica.
-
-### Visita à superfície (1ª pessoa)
-- Céu com o **tamanho angular real da estrela** (KELT-9 b: Sol de 36°; Proxima b: 1,7°), estrelas, faixas de nuvens e pulso de pulsar.
-- Terreno procedural assado na CPU com **colisão exata**; caminhada **WASD + Shift** com passada que varia com a gravidade local (`g = GM/R²`).
-- Mundos gasosos/hycean viram **mares de nuvens** flutuantes; mundos de lava brilham nas fraturas.
-- "Diário do Visitante" com o que você veria; telemetria (FPS, rumo, posição, FOV, gravidade, Ø do Sol).
-
-### Prof. Zyx 👽
-Personagem em canvas (flutuação, piscadas, aceno, jetpack) que narra curiosidades **TDAH-friendly** — frases curtas, uma ideia por balão, palavras-chave em negrito, efeito máquina de escrever. Alterna fatos gerais e **fatos dinâmicos gerados sobre o sistema em exibição**.
-
-## 🎮 Controles
-
-| Ação | Entrada |
+| Ação | Controle |
 |---|---|
-| Orbitar câmera / zoom | arrastar / rolar |
-| Selecionar corpo | clique |
-| Pausar simulação | `Espaço` |
-| Limpar seleção / sair da visita | `Esc` |
-| Caminhar / correr na superfície | `WASD` / `Shift` |
-| Olhar ao redor na superfície | arrastar |
+| Orbitar câmera / zoom | arrastar / rolar (ou botões ⊕ ⊖ do dock) |
+| Focar corpo | clique na cena, no trilho lateral ou no painel |
+| Pausar / velocidade / rotação | dock inferior (Espaço alterna pausa) |
+| Visão geral (reenquadrar) | botão no dock |
+| Visitar superfície (1ª pessoa) | botão "Pousar" no painel → WASD caminha, Shift corre, Esc volta |
+| Trocar de modo | abas no topo ou teclas 1/2/3 |
 
-## 🛠 Arquitetura
+## 🪐 Visita em primeira pessoa
+
+Cada um dos 23 corpos do Sistema Solar e todos os exoplanetas têm perfil de visita próprio: céu com o **tamanho angular real** da estrela, terreno procedural com colisão exata, gravidade local (a passada muda na Lua vs. Júpiter), rochas, poeira e o "Diário do Visitante" com fatos científicos.
+
+## ⚖️ Comparador
+
+- **Estrelas**: temperatura, massa, raio, luminosidade, metalicidade, nº de planetas, distância.
+- **Planetas**: raio, massa, período, distância à estrela, insolação, temperatura de equilíbrio, ESI, badge de zona habitável.
+- **Luas**: raio, distância do planeta, período orbital.
+- Presets rápidos ("Terra × TRAPPIST-1e", "Sol × anã vermelha", "Mundos de oceano"…) e busca com filtro.
+
+## 🗂 Arquitetura
 
 ```
 src/
-├── data/catalog.ts        # 22 sistemas, 60 planetas, helpers (Kepler, HZ, ESI), fatos
-├── three/shaders.ts       # GLSL unificado (planetas, estrelas, céu, terreno, rochas, fundo)
-├── three/ExoScene.ts      # explorador orbital (bloom, seleção, comparação, controles)
-├── three/SurfaceScene.ts  # visita 1ª pessoa (terreno assado, perfis por classe)
-├── components/            # AlienTeacher, SurfaceVisit
-├── lib/sound.ts           # micro-feedback WebAudio
-└── App.tsx                # layout: lista · viewport · painel de dados
+├── App.tsx                  modos, dock de simulação, navegação segmentada
+├── data/
+│   ├── catalog.ts           22 sistemas exoplanetários + helpers (Kepler, Kopparapu, ESI)
+│   ├── solarSystem.ts       Sol, 8 planetas, 15 luas + perfis de visita
+│   └── compare.ts           listas unificadas do comparador
+├── three/
+│   ├── shaders.ts           biblioteca GLSL (ruído, superfícies, céu, terreno, anéis)
+│   ├── SolarScene.ts        cena orbital do Sistema Solar (bloom, kepler, luas)
+│   ├── ExoScene.ts          cena de sistemas exoplanetários (12 classes de mundo)
+│   └── SurfaceScene.ts      visita em 1ª pessoa (terreno assado na CPU, colisão)
+├── components/
+│   ├── ComparePanel.tsx     comparador com barras animadas e deltas
+│   ├── SolarDetailPanel.tsx painel de dados do Sistema Solar
+│   ├── SurfaceVisit.tsx     overlay da visita (telemetria, diário)
+│   └── AlienTeacher.tsx     Prof. Zyx — curiosidades TDAH-friendly
+└── lib/sound.ts             feedback sonoro (WebAudio)
 ```
 
-Rodar: `npm install` → `npm run dev` · Build: `npm run build`.
+## ▶️ Executar
 
-*Escalas orbitais e de raio usam leis de potência idênticas em todos os sistemas (comparação justa, não escala real). Grandezas angulares e físicas da visita usam valores reais.*
+```bash
+npm install
+npm run dev      # desenvolvimento
+npm run build    # produção (dist/)
+```
+
+*Fontes: NASA Exoplanet Archive · Open Exoplanet Catalogue (Rein et al.) · Habitable Worlds Catalog (PHL @ UPR Arecibo) · NASA Planetary Fact Sheets. Escalas orbitais visuais usam lei de potência para legibilidade; grandezas angulares e físicas são reais.*

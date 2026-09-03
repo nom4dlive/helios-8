@@ -1,37 +1,51 @@
 import { useEffect, useRef, useState } from "react";
-import { SurfaceScene, visitProfile, type SurfaceTelemetry } from "../three/SurfaceScene";
+import { SurfaceScene, visitProfile, type SurfaceTelemetry, type VisitProfile } from "../three/SurfaceScene";
 import { CLASS_META, fmtNum, type ExoPlanet, type ExoSystem } from "../data/catalog";
 import { sfx } from "../lib/sound";
 
 interface Props {
-  planet: ExoPlanet;
-  system: ExoSystem;
   onClose: () => void;
+  /** modo exoplaneta: deriva o perfil da classe do mundo */
+  planet?: ExoPlanet;
+  system?: ExoSystem;
+  /** modo Sistema Solar: perfil explícito */
+  profile?: VisitProfile;
+  name?: string;
+  subtitle?: string;
 }
 
-export default function SurfaceVisit({ planet, system, onClose }: Props) {
+export default function SurfaceVisit({ planet, system, profile, name, subtitle, onClose }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [tele, setTele] = useState<SurfaceTelemetry>({
     fps: 60, posX: 0, posZ: 0, headingDeg: 0, pitchDeg: 0, fov: 70, moving: false,
   });
   const [dragged, setDragged] = useState(false);
-  const prof = visitProfile(planet, system);
+  const prof = profile ?? (planet && system ? visitProfile(planet, system) : null);
+  const title = name ?? planet?.name ?? "Mundo";
+  const sub =
+    subtitle ??
+    (planet && system
+      ? `${CLASS_META[planet.cls].label.toUpperCase()} · SISTEMA ${system.starName.toUpperCase()}`
+      : "");
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    if (!mountRef.current || !prof) return;
     const scene = new SurfaceScene(mountRef.current, {
       planet,
       system,
+      profile,
       onTelemetry: setTele,
     });
     sfx.whoosh();
+    const el = mountRef.current;
     const onDown = () => setDragged(true);
-    mountRef.current.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerdown", onDown);
     return () => {
-      mountRef.current?.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerdown", onDown);
       scene.dispose();
     };
-  }, [planet.id, system.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planet?.id, system?.id, profile]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,6 +55,7 @@ export default function SurfaceVisit({ planet, system, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  if (!prof) return null;
   const compass = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"][Math.round(tele.headingDeg / 45) % 8];
 
   return (
@@ -50,15 +65,14 @@ export default function SurfaceVisit({ planet, system, onClose }: Props) {
       {/* topo */}
       <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex items-start justify-between p-4">
         <div className="rise-in border border-line bg-panel/90 px-4 py-2.5 backdrop-blur-md">
-          <div className="font-display text-[16px] font-bold text-ink">{planet.name}</div>
+          <div className="font-display text-[16px] font-bold text-ink">{title}</div>
           <div className="mt-0.5 font-mono text-[8.5px] tracking-[0.24em] text-dim">
-            <span style={{ color: CLASS_META[planet.cls].color }}>{CLASS_META[planet.cls].label.toUpperCase()}</span>
-            {" · "}SISTEMA {system.starName.toUpperCase()}
+            <span className="text-solar-hot">{sub}</span>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="pointer-events-auto border border-line bg-panel/90 px-4 py-2.5 font-mono text-[9.5px] tracking-[0.2em] text-dim backdrop-blur-md transition-colors hover:border-solar/60 hover:text-solar-hot"
+          className="btn pointer-events-auto"
         >
           ✕ VOLTAR À ÓRBITA · ESC
         </button>

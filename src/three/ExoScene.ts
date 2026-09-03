@@ -626,6 +626,24 @@ export class ExoScene {
     this.spinMult = THREE.MathUtils.clamp(m, 0, 4);
   }
 
+  /** reenquadra o sistema inteiro */
+  resetCamera() {
+    const sysId = this.sel?.systemId ?? EXO_SYSTEMS[1].id;
+    const sys = EXO_SYSTEMS.find((s) => s.id === sysId) ?? EXO_SYSTEMS[1];
+    const pulsar = sys.kind === "pulsar";
+    const maxR = Math.max(...this.anims.map((a) => a.r), 24);
+    const cx = this.showCompare && !pulsar ? 50 : 0;
+    this.controls.target.set(cx, 0, 0);
+    this.camera.position.set(cx, maxR * 0.95 + 18, maxR * 1.35 + 26);
+  }
+
+  /** aproxima (<1) ou afasta (>1) a câmera do alvo */
+  zoomBy(f: number) {
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    const len = THREE.MathUtils.clamp(dir.length() * Math.max(f, 0.05), 6, 1200);
+    this.camera.position.copy(this.controls.target).addScaledVector(dir.normalize(), len);
+  }
+
   /* -------------------------------------------------- eventos */
 
   private onDown = (e: PointerEvent) => {

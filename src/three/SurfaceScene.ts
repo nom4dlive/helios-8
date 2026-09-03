@@ -21,8 +21,11 @@ export interface SurfaceTelemetry {
 }
 
 export interface SurfaceSceneOptions {
-  planet: ExoPlanet;
-  system: ExoSystem;
+  /** exoplaneta + sistema — o perfil é derivado automaticamente */
+  planet?: ExoPlanet;
+  system?: ExoSystem;
+  /** perfil explícito (corpos do Sistema Solar) */
+  profile?: VisitProfile;
   onTelemetry: (t: SurfaceTelemetry) => void;
 }
 
@@ -327,7 +330,7 @@ export class SurfaceScene {
   constructor(mount: HTMLElement, opts: SurfaceSceneOptions) {
     this.mount = mount;
     this.opts = opts;
-    this.prof = visitProfile(opts.planet, opts.system);
+    this.prof = opts.profile ?? visitProfile(opts.planet!, opts.system!);
     this.initGL();
     this.build();
     this.bind();
@@ -361,7 +364,7 @@ export class SurfaceScene {
       Math.sin(sunElev),
       Math.cos(sunElev) * Math.cos(sunAz)
     ).normalize();
-    const isPulsar = this.opts.system.kind === "pulsar";
+    const isPulsar = this.opts.system?.kind === "pulsar";
 
     /* céu */
     const skyU = {
