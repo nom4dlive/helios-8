@@ -149,6 +149,131 @@ void main() {
 }
 `;
 
+/** Terra — continentes, oceanos com especular, desertos, gelo polar */
+export const EARTH_FRAG = /* glsl */ `
+${NOISE_GLSL}
+uniform vec3 uPalette[6];
+uniform float uTime;
+uniform vec3 uAtmosColor;
+uniform float uAtmosAmp;
+uniform vec3 uSunPos;
+varying vec3 vObjPos;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+varying vec2 vUv;
+
+void main() {
+  vec3 p = normalize(vObjPos);
+  float n = fbm(p * 3.2 + 7.3);
+  float detail = fbm(p * 9.0 + 2.1);
+  float h = n + 0.18 * detail;
+
+  float land = smoothstep(0.545, 0.565, h);
+  vec3 ocean = mix(uPalette[0], uPalette[1], smoothstep(0.35, 0.545, h));
+
+  float desertBand = 1.0 - smoothstep(0.12, 0.42, abs(abs(p.y) - 0.4));
+  vec3 landCol = mix(uPalette[2], uPalette[3], smoothstep(0.56, 0.72, h));
+  landCol = mix(landCol, uPalette[5], desertBand * 0.55 * smoothstep(0.55, 0.7, h));
+
+  vec3 col = mix(ocean, landCol, land);
+  float ice = smoothstep(0.72, 0.86, abs(p.y) + 0.06 * (detail - 0.5));
+  col = mix(col, uPalette[4], ice);
+
+  vec3 N = normalize(vWorldNormal);
+  vec3 L = normalize(uSunPos - vWorldPos);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  float dif = clamp((dot(N, L) + 0.12) / 1.12, 0.0, 1.0);
+  col *= 0.04 + 1.3 * dif;
+
+  float spec = pow(max(dot(reflect(-L, N), V), 0.0), 42.0) * (1.0 - land) * (1.0 - ice);
+  col += vec3(1.0, 0.95, 0.85) * spec * 0.55 * dif;
+
+  float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
+  col += uAtmosColor * fres * uAtmosAmp * (0.3 + 0.7 * dif);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+/** casca de nuvens animada (Terra/Vênus/Titã) — alpha procedural + lado iluminado */
+export const CLOUD_SHELL_FRAG = /* glsl */ `
+${NOISE_GLSL}
+uniform float uTime;
+uniform float uAmp;
+uniform float uSpeed;
+uniform vec3 uTint;
+uniform vec3 uSunPos;
+varying vec3 vObjPos;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+varying vec2 vUv;
+
+void main() {
+  vec3 p = normalize(vObjPos);
+  float t = uTime * uSpeed;
+  float c = fbm(p * 4.5 + vec3(t * 0.03, 0.0, t * 0.015));
+  float c2 = fbm(p * 10.0 - vec3(t * 0.05, 0.0, 0.0));
+  float a = smoothstep(0.5, 0.82, c * 0.75 + c2 * 0.25) * uAmp;
+
+  vec3 N = normalize(vWorldNormal);
+  vec3 L = normalize(uSunPos - vWorldPos);
+  float dif = clamp((dot(N, L) + 0.1) / 1.1, 0.0, 1.0);
+  vec3 col = uTint * (0.12 + 1.15 * dif);
+  gl_FragColor = vec4(col, a);
+}
+`;
+
+/** anéis planetários — bandas procedurais com lacunas de Cassini/Encke */
+export const RING_VERT = /* glsl */ `
+uniform float uOuter;
+varying float vRad;
+varying vec2 vUvPlanar;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+void main() {
+  vRad = length(position.xz);
+  vUvPlanar = position.xz / (2.0 * uOuter) + 0.5;
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+export const RING_FRAG = /* glsl */ `
+${NOISE_GLSL}
+uniform float uInner;
+uniform float uOuter;
+uniform vec3 uTint;
+uniform float uOpacity;
+uniform vec3 uSunPos;
+varying float vRad;
+varying vec2 vUvPlanar;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+void main() {
+  float t = clamp((vRad - uInner) / max(uOuter - uInner, 0.01), 0.0, 1.0);
+  float bands = 0.55 + 0.45 * sin(t * 95.0 + fbm(vec3(t * 30.0, 3.7, 1.3)) * 6.0);
+  float fine = 0.75 + 0.25 * vnoise(vec3(t * 140.0, 8.1, 2.2));
+  float cassini = smoothstep(0.012, 0.05, abs(t - 0.60));
+  float encke = smoothstep(0.005, 0.018, abs(t - 0.885));
+  float innerFade = smoothstep(0.0, 0.07, t);
+  float outerFade = 1.0 - smoothstep(0.93, 1.0, t);
+  float bRing = 1.15 - 0.45 * t;
+
+  vec3 col = uTint * mix(0.68, 1.12, bands) * fine;
+  col = mix(col, vec3(0.62, 0.5, 0.38),
+    smoothstep(0.35, 0.9, fbm(vec3(t * 12.0, 5.5, 9.1))) * 0.45);
+
+  vec3 N = normalize(vWorldNormal);
+  vec3 L = normalize(uSunPos - vWorldPos);
+  col *= abs(dot(N, L)) * 0.75 + 0.25;
+
+  float alpha = uOpacity * bands * fine * cassini * encke * innerFade * outerFade * bRing;
+  gl_FragColor = vec4(col, alpha);
+}
+`;
+
 /** estrela com granulação viva; uPulse=1 → modo pulsar (piscada de farol) */
 export const STAR_FRAG = /* glsl */ `
 ${NOISE_GLSL}
